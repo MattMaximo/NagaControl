@@ -254,7 +254,8 @@ final class MouseController: ObservableObject {
         dpiWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, let m = self.selected?.model else { return }
-            let x = self.dpiX, y = self.linkXY ? self.dpiX : self.dpiY
+            if self.linkXY { self.dpiY = self.dpiX }
+            let x = self.dpiX, y = self.dpiY
             let req = m.byteDPI ? Cmd.setDPIByte(x, y) : Cmd.setDPI(x, y)
             let get = m.byteDPI ? Cmd.getDPIByte() : Cmd.getDPI()
             self.run([req, get], label: "DPI", quiet: true) { res, errs in
@@ -262,16 +263,30 @@ final class MouseController: ObservableObject {
                     self.setStatus("DPI change failed: \(errs.first ?? "no reply")", error: true); return
                 }
                 let (rx, ry) = m.byteDPI ? d.dpiFromBytes : d.dpi
+                // Byte-DPI mice round to their nearest step, so allow a little slack.
                 if abs(rx - x) <= 30 && abs(ry - y) <= 30 {
                     self.setStatus(self.linkXY ? "DPI set to \(x)" : "DPI set to \(x) × \(y)", error: false)
                 } else {
                     self.setStatus("Mouse reports \(rx) DPI (asked for \(x))", error: true)
+                    self.dpiX = rx; self.dpiY = ry
                 }
-                if abs(rx - x) > 30 || abs(ry - y) > 30 { self.dpiX = rx; self.dpiY = ry }
             }
         }
         dpiWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + (debounce ? 0.25 : 0), execute: work)
+    }
+
+    /// The "Separate X / Y" switch. Only linking again needs a write (Y snaps to X).
+    func setLinkXY(_ linked: Bool) {
+        linkXY = linked
+        if linked, dpiY != dpiX { dpiY = dpiX; applyDPI(debounce: false) }
+    }
+
+    /// True when `preset` is what the mouse is set to. Byte-DPI mice can't store every value
+    /// (800 reads back as 794), so compare what would actually be sent.
+    func isCurrentDPI(_ preset: Int) -> Bool {
+        guard selected?.model.byteDPI == true else { return dpiX == preset }
+        return Cmd.dpiToByte(dpiX) == Cmd.dpiToByte(preset)
     }
 
     func applyPoll(_ hz: Int) {

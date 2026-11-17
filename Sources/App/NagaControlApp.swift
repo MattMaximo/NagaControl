@@ -33,7 +33,7 @@ struct MenuDPI: View {
             if let b = mouse.battery { Text("Battery \(b)%\(mouse.charging ? " (charging)" : "")") }
             Divider()
             ForEach(presets(max: d.model.maxDPI), id: \.self) { p in
-                Button("\(p) DPI\(p == mouse.dpiX ? "  ✓" : "")") {
+                Button("\(p) DPI\(mouse.isCurrentDPI(p) ? "  ✓" : "")") {
                     mouse.dpiX = p; mouse.dpiY = p; mouse.linkXY = true; mouse.applyDPI(debounce: false)
                 }
             }
@@ -125,14 +125,14 @@ struct ContentView: View {
                     .foregroundStyle(razerGreen)
                 Text(mouse.linkXY ? "DPI" : "DPI X").foregroundStyle(.secondary)
                 Spacer()
-                Toggle("Separate X / Y", isOn: $mouse.linkXY.inverted).toggleStyle(.switch).controlSize(.small)
-                    .onChange(of: mouse.linkXY) { _, linked in if linked { mouse.dpiY = mouse.dpiX; mouse.applyDPI() } }
+                Toggle("Separate X / Y", isOn: Binding(get: { !mouse.linkXY }, set: { mouse.setLinkXY(!$0) }))
+                    .toggleStyle(.switch).controlSize(.small)
             }
-            dpiSlider(value: $mouse.dpiX, max: m.maxDPI, step: m.byteDPI ? 50 : 50)
+            dpiSlider(value: $mouse.dpiX, max: m.maxDPI)
             if !mouse.linkXY {
                 HStack {
                     Text("Y").foregroundStyle(.secondary).frame(width: 14)
-                    dpiSlider(value: $mouse.dpiY, max: m.maxDPI, step: 50)
+                    dpiSlider(value: $mouse.dpiY, max: m.maxDPI)
                     Text("\(mouse.dpiY)").monospacedDigit().frame(width: 48, alignment: .trailing)
                 }
             }
@@ -141,7 +141,7 @@ struct ContentView: View {
                     Button(String(p)) {
                         mouse.dpiX = p; if mouse.linkXY { mouse.dpiY = p }; mouse.applyDPI(debounce: false)
                     }
-                    .buttonStyle(Chip(active: mouse.dpiX == p))
+                    .buttonStyle(Chip(active: mouse.isCurrentDPI(p)))
                 }
             }
             Divider().padding(.vertical, 2)
@@ -155,8 +155,9 @@ struct ContentView: View {
         }
     }
 
-    func dpiSlider(value: Binding<Int>, max: Int, step: Int) -> some View {
-        Slider(value: Binding(get: { Double(value.wrappedValue) },
+    func dpiSlider(value: Binding<Int>, max: Int) -> some View {
+        let step = 50
+        return Slider(value: Binding(get: { Double(value.wrappedValue) },
                               set: { value.wrappedValue = Int(($0 / Double(step)).rounded()) * step }),
                in: 100...Double(max)) { editing in
             if !editing { mouse.applyDPI(debounce: false) }
@@ -334,8 +335,4 @@ struct Chip: ButtonStyle {
             .foregroundStyle(active ? .black : .primary)
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
-}
-
-extension Binding where Value == Bool {
-    var inverted: Binding<Bool> { Binding(get: { !wrappedValue }, set: { wrappedValue = !$0 }) }
 }

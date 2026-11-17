@@ -38,6 +38,11 @@ check("x bright", Cmd.xBrightness(.scrollWheel, 0x80), [0,0xFF,0,0,0,0x03,0x0F,0
 check("free spin", Cmd.setScrollMode(freeSpin: true), [0,0xFF,0,0,0,0x02,0x02,0x14,0x01,0x01], 0x02^0x02^0x14^0x01^0x01)
 check("smart reel get", Cmd.getSmartReel(), [0,0xFF,0,0,0,0x02,0x02,0x97,0x01], 0x02^0x02^0x97^0x01)
 
+// Every preset must survive the byte round trip, or its chip can't light up after a re-read.
+for preset in [400, 800, 1200, 1600, 2400, 3200, 4800, 6400] {
+  expect("byte DPI round trip \(preset)", Cmd.dpiToByte(Cmd.byteToDPI(Cmd.dpiToByte(preset))), Cmd.dpiToByte(preset))
+}
+
 // Reply handling
 func reply(_ status: UInt8, like r: RazerReport, args: [UInt8] = []) -> RazerReport {
   var b = r.bytes; b[0] = status
