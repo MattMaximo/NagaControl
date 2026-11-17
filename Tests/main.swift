@@ -1,0 +1,14 @@
+func hex(_ r: RazerReport) -> String { r.bytes.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " ") + " … crc=" + String(format: "%02X", r.bytes[88]) }
+var fails = 0
+func check(_ name: String, _ r: RazerReport, _ expectPrefix: [UInt8], _ crc: UInt8) {
+  let ok = Array(r.bytes.prefix(expectPrefix.count)) == expectPrefix && r.bytes[88] == crc && r.bytes.count == 90
+  print(ok ? "PASS" : "FAIL", name, hex(r)); if !ok { fails += 1 }
+}
+check("setDPI 1600", Cmd.setDPI(1600,1600), [0x00,0xFF,0,0,0,0x07,0x04,0x05,0x01,0x06,0x40,0x06,0x40,0,0], 0x07)
+check("getDPI", Cmd.getDPI(), [0x00,0xFF,0,0,0,0x07,0x04,0x85,0x00], 0x07^0x04^0x85)
+check("setPoll 1000", Cmd.setPoll(1000), [0,0xFF,0,0,0,0x01,0x00,0x05,0x01], 0x01^0x05^0x01)
+check("battery", Cmd.battery(), [0,0xFF,0,0,0,0x02,0x07,0x80], 0x02^0x07^0x80)
+check("led rgb", Cmd.setLEDRGB(.scrollWheel,0xFF,0,0x10), [0,0x3F,0,0,0,0x05,0x03,0x01,0x01,0x01,0xFF,0x00,0x10], 0x05^0x03^0x01^0x01^0x01^0xFF^0x10)
+check("dpi byte 3375", Cmd.setDPIByte(3375,6750), [0,0xFF,0,0,0,0x03,0x04,0x01,128,255,0], 0x03^0x04^0x01^128^255)
+print(Cmd.byteToDPI(255), Cmd.dpiToByte(800))
+print(fails == 0 ? "ALL PASS" : "\(fails) FAIL")
