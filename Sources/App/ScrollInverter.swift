@@ -14,7 +14,7 @@ final class ScrollInverter: ObservableObject {
     @Published var reverseHorizontal: Bool { didSet { save(); syncTap() } }
     @Published private(set) var trusted = AXIsProcessTrusted()
     @Published private(set) var active = false
-    @Published var openAtLogin = SMAppService.mainApp.status == .enabled
+    @Published private(set) var openAtLogin = SMAppService.mainApp.status == .enabled
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
@@ -30,8 +30,6 @@ final class ScrollInverter: ObservableObject {
     private func save() {
         UserDefaults.standard.set(reverseVertical, forKey: "reverseVertical")
         UserDefaults.standard.set(reverseHorizontal, forKey: "reverseHorizontal")
-        InverterFlags.vertical = reverseVertical
-        InverterFlags.horizontal = reverseHorizontal
     }
 
     func requestAccess() {
@@ -40,40 +38,57 @@ final class ScrollInverter: ObservableObject {
         if !trusted {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         }
-        watchForTrust()
+        syncTap()
     }
 
-    private func watchForTrust() {
-        trustTimer?.invalidate()
-        trustTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
+    /// While reversing is switched on, notice Accessibility being granted or taken away.
+    private func watchTrust(_ on: Bool) {
+        if !on { trustTimer?.invalidate(); trustTimer = nil; return }
+        guard trustTimer == nil else { return }
+        trustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { t.invalidate(); return }
-                self.trusted = AXIsProcessTrusted()
-                if self.trusted { t.invalidate(); self.syncTap() }
+                guard let self else { return }
+                // Also retries a tap that could not be created the first time.
+                if AXIsProcessTrusted() != self.trusted || (self.trusted && self.tap == nil) { self.syncTap() }
             }
         }
     }
 
-    func syncTap() {
+    /// Brings the event tap in line with the two switches and the Accessibility permission.
+    private func syncTap() {
         InverterFlags.vertical = reverseVertical
         InverterFlags.horizontal = reverseHorizontal
         let wanted = reverseVertical || reverseHorizontal
-        if wanted && tap == nil {
-            trusted = AXIsProcessTrusted()
-            guard trusted else { active = false; watchForTrust(); return }
-            let mask = CGEventMask(1 << CGEventType.scrollWheel.rawValue)
-            guard let t = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
-                                            options: .defaultTap, eventsOfInterest: mask,
-                                            callback: scrollTapCallback, userInfo: nil) else {
-                active = false; return
-            }
-            InverterFlags.tap = t
-            let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, t, 0)
-            CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
-            CGEvent.tapEnable(tap: t, enable: true)
-            tap = t; source = src
-        }
-        active = tap != nil && wanted
+        let nowTrusted = AXIsProcessTrusted()
+        if nowTrusted != trusted { trusted = nowTrusted }
+        if !nowTrusted { removeTap() }                 // permission revoked: don't keep a dead tap
+        else if wanted && tap == nil { installTap() }
+        // With both switches off the tap stays installed but disabled, so scroll events
+        // no longer make a round trip through this app.
+        if let tap { CGEvent.tapEnable(tap: tap, enable: wanted) }
+        let nowActive = wanted && tap != nil
+        if nowActive != active { active = nowActive }
+        watchTrust(wanted)
+    }
+
+    private func installTap() {
+        let mask = CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+        guard let t = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap,
+                                        options: .defaultTap, eventsOfInterest: mask,
+                                        callback: scrollTapCallback, userInfo: nil) else { return }
+        let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, t, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
+        InverterFlags.tap = t
+        tap = t; source = src
+    }
+
+    private func removeTap() {
+        guard let t = tap else { return }
+        CGEvent.tapEnable(tap: t, enable: false)
+        if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+        CFMachPortInvalidate(t)
+        InverterFlags.tap = nil
+        tap = nil; source = nil
     }
 
     func setOpenAtLogin(_ on: Bool) {
@@ -91,6 +106,8 @@ enum InverterFlags {
     nonisolated(unsafe) static var tap: CFMachPort?
 }
 
+/// A scroll event carries one axis three ways: whole lines, 16.16 fixed-point lines, and pixels.
+/// Read all three before writing: setting the line delta makes CoreGraphics recompute the other two.
 private func negate(_ e: CGEvent, _ delta: CGEventField, _ fixed: CGEventField, _ point: CGEventField) {
     let d = e.getIntegerValueField(delta)
     let f = e.getDoubleValueField(fixed)
@@ -103,7 +120,10 @@ private func negate(_ e: CGEvent, _ delta: CGEventField, _ fixed: CGEventField, 
 private func scrollTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent,
                                userInfo: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        if let t = InverterFlags.tap { CGEvent.tapEnable(tap: t, enable: true) }
+        // macOS switched the tap off (slow callback, secure input). Turn it back on if still wanted.
+        if let t = InverterFlags.tap, InverterFlags.vertical || InverterFlags.horizontal {
+            CGEvent.tapEnable(tap: t, enable: true)
+        }
         return Unmanaged.passUnretained(event)
     }
     guard type == .scrollWheel,
