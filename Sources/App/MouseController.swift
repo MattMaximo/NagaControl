@@ -87,7 +87,10 @@ final class MouseController: ObservableObject {
         }
     }
 
-    func refreshDevices() {
+    /// The Rescan / refresh buttons: look for mice again and re-read the current one.
+    func rescan() { refreshDevices(rereadCurrent: true) }
+
+    private func refreshDevices(rereadCurrent: Bool = false) {
         var found = Self.scan()
         if ProcessInfo.processInfo.environment["NAGA_DEMO"] != nil, found.isEmpty {
             found = [FoundDevice(pid: UInt16(ProcessInfo.processInfo.environment["NAGA_DEMO"] ?? "", radix: 16) ?? 0x003E, location: 0, product: "Demo")]   // UI preview only
@@ -95,7 +98,10 @@ final class MouseController: ObservableObject {
         devices = found
         log("Scan: " + (found.isEmpty ? "no Razer USB devices" :
             found.map { String(format: "%@ [1532:%04X]", $0.product, $0.pid) }.joined(separator: ", ")))
-        if let cur = selected, found.contains(cur) { return }
+        if let cur = selected, found.contains(cur) {
+            if rereadCurrent { readAll() }
+            return
+        }
         // Prefer a known model; otherwise any Razer device.
         select(found.first(where: { $0.known }) ?? found.first)
     }

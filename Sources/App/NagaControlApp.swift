@@ -42,7 +42,7 @@ struct MenuDPI: View {
         }
         Divider()
         Toggle("Reverse mouse wheel", isOn: $scroll.reverseVertical)
-        Button("Rescan") { mouse.refreshDevices() }
+        Button("Rescan") { mouse.rescan() }
         Button("Quit") { NSApp.terminate(nil) }
     }
 }
@@ -107,7 +107,7 @@ struct ContentView: View {
                 } label: { Image(systemName: "chevron.down.circle") }
                 .menuStyle(.borderlessButton).fixedSize()
             }
-            Button { mouse.refreshDevices() } label: { Image(systemName: "arrow.clockwise") }
+            Button { mouse.rescan() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless).help("Rescan / re-read the mouse")
         }
         .padding(14)
@@ -260,7 +260,7 @@ struct ContentView: View {
             Text("No Razer mouse found").font(.title3)
             Text("Plug the Naga in with its USB cable, or plug in the charging dock.\nUSB-C adapters/hubs are fine.")
                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
-            Button("Rescan") { mouse.refreshDevices() }.buttonStyle(.borderedProminent)
+            Button("Rescan") { mouse.rescan() }.buttonStyle(.borderedProminent)
             Spacer()
             scrolling(MouseModel.generic("")).padding(16)
         }.frame(maxWidth: .infinity)
