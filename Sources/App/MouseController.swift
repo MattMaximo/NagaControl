@@ -116,6 +116,9 @@ final class MouseController: ObservableObject {
             }
             if r != 0 { lastErr = TransportError.io(r); usleep(10_000); continue }
             let resp = RazerReport(raw: out)
+            // The original Naga Epic answers some set commands (e.g. DPI) with an empty report while it
+            // applies them. Don't resend; the caller confirms with a read-back.
+            if req.cmd < 0x80, resp.status == 0, resp.cls == 0, resp.cmd == 0 { return (resp, path) }
             if resp.status == RazerStatus.busy.rawValue && attempt < 3 { usleep(15_000); continue }
             if resp.cls != req.cls || resp.cmd != req.cmd { lastErr = TransportError.mismatch; usleep(10_000); continue }
             if resp.status == RazerStatus.ok.rawValue || resp.status == RazerStatus.busy.rawValue { return (resp, path) }
@@ -161,7 +164,7 @@ final class MouseController: ObservableObject {
         let m = dev.model
         var reqs: [RazerReport] = [Cmd.firmware(), m.byteDPI ? Cmd.getDPIByte() : Cmd.getDPI(), Cmd.getPoll()]
         if m.wireless { reqs += [Cmd.battery(), Cmd.charging(), Cmd.getIdle()] }
-        for z in m.zones { reqs.append(Cmd.getBrightness(z)) }
+        for z in m.zones { reqs += [Cmd.getBrightness(z), Cmd.getLEDState(z), Cmd.getLEDEffect(z), Cmd.getLEDRGB(z)] }
         run(reqs, label: "Connected to \(m.name)") { res, _ in
             var i = 0
             func next() -> RazerReport? { defer { i += 1 }; return res[i] }
@@ -182,8 +185,12 @@ final class MouseController: ObservableObject {
             }
             for z in m.zones {
                 if let b = next() { self.brightness[z] = Double(b.arg(2)) / 255 * 100 }
-                if self.effects[z] == nil { self.effects[z] = .staticColor }
-                if self.colors[z] == nil { self.colors[z] = Color(red: 0.27, green: 0.84, blue: 0.17) }
+                let st = next(), ef = next(), c = next()
+                if let st, st.arg(2) == 0 { self.effects[z] = .off }
+                else if let ef { self.effects[z] = [0: .staticColor, 2: .breathing, 4: .spectrum][Int(ef.arg(2))] ?? .staticColor }
+                else if self.effects[z] == nil { self.effects[z] = .staticColor }
+                if let c { self.colors[z] = Color(red: Double(c.arg(2)) / 255, green: Double(c.arg(3)) / 255, blue: Double(c.arg(4)) / 255) }
+                else if self.colors[z] == nil { self.colors[z] = Color(red: 0.27, green: 0.84, blue: 0.17) }
             }
         }
     }
@@ -204,7 +211,20 @@ final class MouseController: ObservableObject {
             guard let self, let m = self.selected?.model else { return }
             let x = self.dpiX, y = self.linkXY ? self.dpiX : self.dpiY
             let req = m.byteDPI ? Cmd.setDPIByte(x, y) : Cmd.setDPI(x, y)
-            self.run([req], label: self.linkXY ? "DPI set to \(x)" : "DPI set to \(x) × \(y)") { _, _ in }
+            let get = m.byteDPI ? Cmd.getDPIByte() : Cmd.getDPI()
+            self.run([req, get], label: "DPI", quiet: true) { res, errs in
+                guard let d = res[1] else {
+                    self.setStatus("DPI change failed: \(errs.first ?? "no reply")", error: true); return
+                }
+                let rx = m.byteDPI ? Cmd.byteToDPI(d.arg(0)) : Int(d.arg(1)) << 8 | Int(d.arg(2))
+                let ry = m.byteDPI ? Cmd.byteToDPI(d.arg(1)) : Int(d.arg(3)) << 8 | Int(d.arg(4))
+                if abs(rx - x) <= 30 && abs(ry - y) <= 30 {
+                    self.setStatus(self.linkXY ? "DPI set to \(x)" : "DPI set to \(x) × \(y)", error: false)
+                } else {
+                    self.setStatus("Mouse reports \(rx) DPI (asked for \(x))", error: true)
+                }
+                if abs(rx - x) > 30 || abs(ry - y) > 30 { self.dpiX = rx; self.dpiY = ry }
+            }
         }
         dpiWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + (debounce ? 0.25 : 0), execute: work)

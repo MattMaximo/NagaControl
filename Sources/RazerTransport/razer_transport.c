@@ -38,10 +38,8 @@ static io_iterator_t razer_usb_iterator(void) {
     for (int c = 0; c < 2; c++) {
         CFMutableDictionaryRef match = IOServiceMatching(classes[c]);
         if (!match) continue;
-        int32_t vid = RAZER_VID;
-        CFNumberRef n = CFNumberCreate(NULL, kCFNumberSInt32Type, &vid);
-        CFDictionarySetValue(match, CFSTR(kUSBVendorID), n);
-        CFRelease(n);
+        // Plain top-level property keys don't filter IOUSBHostDevice matching on current macOS,
+        // so enumerate every USB device and filter by idVendor in the callers.
         io_iterator_t it = 0;
         if (IOServiceGetMatchingServices(kIOMainPortDefault, match, &it) == KERN_SUCCESS && it) {
             if (IOIteratorIsValid(it)) {
@@ -86,10 +84,11 @@ static int usb_transfer(uint32_t locationID, uint16_t productID, uint16_t idx,
     if (!it) return -1;
     io_service_t s, found = 0;
     while ((s = IOIteratorNext(it))) {
-        int64_t pid = 0, loc = 0;
+        int64_t vid = 0, pid = 0, loc = 0;
+        cf_int(s, "idVendor", &vid);
         cf_int(s, "idProduct", &pid);
         cf_int(s, "locationID", &loc);
-        if ((uint16_t)pid == productID && (locationID == 0 || (uint32_t)loc == locationID)) { found = s; break; }
+        if (vid == RAZER_VID && (uint16_t)pid == productID && (locationID == 0 || (uint32_t)loc == locationID)) { found = s; break; }
         IOObjectRelease(s);
     }
     IOObjectRelease(it);

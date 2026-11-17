@@ -63,7 +63,7 @@ struct MouseModel {
         switch pid {
         case 0x003E: return MouseModel(name: "Naga Epic Chroma (wired)", maxDPI: 8200, byteDPI: false, wireless: true, zones: [.scrollWheel, .sidePanel], rgb: true)
         case 0x003F: return MouseModel(name: "Naga Epic Chroma (wireless dock)", maxDPI: 8200, byteDPI: false, wireless: true, zones: [.scrollWheel, .sidePanel], rgb: true)
-        case 0x001F: return MouseModel(name: "Naga Epic", maxDPI: 5600, byteDPI: true, wireless: true, zones: [.scrollWheel], rgb: false)
+        case 0x001F: return MouseModel(name: "Naga Epic", maxDPI: 5600, byteDPI: true, wireless: true, zones: [.scrollWheel], rgb: true)
         case 0x0040: return MouseModel(name: "Naga 2014", maxDPI: 8200, byteDPI: false, wireless: false, zones: [.scrollWheel, .sidePanel], rgb: false)
         default: return nil
         }
@@ -105,6 +105,10 @@ enum Cmd {
     static func setLEDState(_ z: LEDZone, on: Bool) -> RazerReport { .init(cls: 0x03, cmd: 0x00, size: 0x03, args: [VARSTORE, z.rawValue, on ? 1 : 0], tid: 0x3F) }
     static func setLEDRGB(_ z: LEDZone, _ r: UInt8, _ g: UInt8, _ b: UInt8) -> RazerReport { .init(cls: 0x03, cmd: 0x01, size: 0x05, args: [VARSTORE, z.rawValue, r, g, b], tid: 0x3F) }
     static func setLEDEffect(_ z: LEDZone, _ e: UInt8) -> RazerReport { .init(cls: 0x03, cmd: 0x02, size: 0x03, args: [VARSTORE, z.rawValue, e], tid: 0x3F) }
+
+    static func getLEDEffect(_ z: LEDZone) -> RazerReport { .init(cls: 0x03, cmd: 0x82, size: 0x03, args: [VARSTORE, z.rawValue]) }
+    static func getLEDRGB(_ z: LEDZone) -> RazerReport { .init(cls: 0x03, cmd: 0x81, size: 0x05, args: [VARSTORE, z.rawValue]) }
+    static func getLEDState(_ z: LEDZone) -> RazerReport { .init(cls: 0x03, cmd: 0x80, size: 0x03, args: [VARSTORE, z.rawValue]) }
 
     static func getIdle() -> RazerReport { .init(cls: 0x07, cmd: 0x83, size: 0x02) }
     static func setIdle(_ seconds: Int) -> RazerReport {
