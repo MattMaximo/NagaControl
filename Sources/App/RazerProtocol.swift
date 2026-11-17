@@ -17,6 +17,11 @@ struct RazerReport {
 
     init(raw: [UInt8]) { bytes = raw }
 
+    func withTransactionID(_ tid: UInt8?) -> RazerReport {
+        guard let tid else { return self }
+        var r = self; r.bytes[1] = tid; r.bytes[88] = RazerReport.crc(r.bytes); return r
+    }
+
     static func crc(_ b: [UInt8]) -> UInt8 {
         var c: UInt8 = 0
         for i in 2..<88 { c ^= b[i] }
@@ -34,10 +39,11 @@ enum RazerStatus: UInt8 {
 }
 
 enum LEDZone: UInt8, CaseIterable, Identifiable {
-    case scrollWheel = 0x01, logo = 0x04, sidePanel = 0x05
+    case all = 0x00, scrollWheel = 0x01, logo = 0x04, sidePanel = 0x05
     var id: UInt8 { rawValue }
     var label: String {
         switch self {
+        case .all: return "All lights"
         case .scrollWheel: return "Scroll wheel"
         case .logo: return "Logo"
         case .sidePanel: return "Side buttons"
@@ -50,6 +56,10 @@ enum LightEffect: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Command family. `.legacy` = class 0x03 LED commands (2011-2016 mice);
+/// `.extended` = class 0x0F matrix commands + scroll-wheel controls (2017+ mice like the Basilisk V3).
+enum ProtocolFamily { case legacy, extended }
+
 /// Per-model capabilities. Values from OpenRazer's daemon/hardware/mouse.py + razermouse_driver.c.
 struct MouseModel {
     let name: String
@@ -57,7 +67,12 @@ struct MouseModel {
     let byteDPI: Bool          // original Naga Epic: 1 byte per axis, scaled over 0...6750
     let wireless: Bool
     let zones: [LEDZone]
-    let rgb: Bool              // Chroma models take an RGB color; the original Epic is green only
+    let rgb: Bool
+    var family: ProtocolFamily = .legacy
+    var transactionID: UInt8? = nil   // overrides every report's transaction id when set
+    var usbIndex: UInt16 = 0          // USB interface the control transfer goes to (wIndex)
+    var scrollControls = false        // free-spin / acceleration / smart reel
+    var defaultEffect: LightEffect = .staticColor
 
     static func forPID(_ pid: UInt16) -> MouseModel? {
         switch pid {
@@ -65,13 +80,20 @@ struct MouseModel {
         case 0x003F: return MouseModel(name: "Naga Epic Chroma (wireless dock)", maxDPI: 8200, byteDPI: false, wireless: true, zones: [.scrollWheel, .sidePanel], rgb: true)
         case 0x001F: return MouseModel(name: "Naga Epic", maxDPI: 5600, byteDPI: true, wireless: true, zones: [.scrollWheel], rgb: true)
         case 0x0040: return MouseModel(name: "Naga 2014", maxDPI: 8200, byteDPI: false, wireless: false, zones: [.scrollWheel, .sidePanel], rgb: false)
+        case 0x0099: return MouseModel(name: "Basilisk V3", maxDPI: 26000, byteDPI: false, wireless: false,
+                                       zones: [.all, .logo, .scrollWheel], rgb: true, family: .extended,
+                                       transactionID: 0x1F, usbIndex: 3, scrollControls: true, defaultEffect: .spectrum)
+        case 0x00CB: return MouseModel(name: "Basilisk V3 35K", maxDPI: 35000, byteDPI: false, wireless: false,
+                                       zones: [.all, .logo, .scrollWheel], rgb: true, family: .extended,
+                                       transactionID: 0x1F, usbIndex: 3, scrollControls: true, defaultEffect: .spectrum)
         default: return nil
         }
     }
 
-    /// Unknown Razer mouse: try the common Chroma-era commands.
+    /// Unknown Razer mouse: best-effort with the modern command set.
     static func generic(_ product: String) -> MouseModel {
-        MouseModel(name: product.isEmpty ? "Razer device" : product, maxDPI: 8200, byteDPI: false, wireless: true, zones: [.scrollWheel, .sidePanel], rgb: true)
+        MouseModel(name: product.isEmpty ? "Razer device" : product, maxDPI: 20000, byteDPI: false, wireless: false,
+                   zones: [.all], rgb: true, family: .extended, transactionID: 0x1F)
     }
 }
 
@@ -109,6 +131,27 @@ enum Cmd {
     static func getLEDEffect(_ z: LEDZone) -> RazerReport { .init(cls: 0x03, cmd: 0x82, size: 0x03, args: [VARSTORE, z.rawValue]) }
     static func getLEDRGB(_ z: LEDZone) -> RazerReport { .init(cls: 0x03, cmd: 0x81, size: 0x05, args: [VARSTORE, z.rawValue]) }
     static func getLEDState(_ z: LEDZone) -> RazerReport { .init(cls: 0x03, cmd: 0x80, size: 0x03, args: [VARSTORE, z.rawValue]) }
+
+    // Extended (class 0x0F) lighting, used by 2017+ mice.
+    static func xBrightness(_ z: LEDZone, _ b: UInt8) -> RazerReport { .init(cls: 0x0F, cmd: 0x04, size: 0x03, args: [VARSTORE, z.rawValue, b]) }
+    static func xGetBrightness(_ z: LEDZone) -> RazerReport { .init(cls: 0x0F, cmd: 0x84, size: 0x03, args: [VARSTORE, z.rawValue]) }
+    static func xStatic(_ z: LEDZone, _ r: UInt8, _ g: UInt8, _ b: UInt8) -> RazerReport {
+        .init(cls: 0x0F, cmd: 0x02, size: 0x09, args: [VARSTORE, z.rawValue, 0x01, 0, 0, 0x01, r, g, b])
+    }
+    static func xBreath(_ z: LEDZone, _ r: UInt8, _ g: UInt8, _ b: UInt8) -> RazerReport {
+        .init(cls: 0x0F, cmd: 0x02, size: 0x09, args: [VARSTORE, z.rawValue, 0x02, 0x01, 0, 0x01, r, g, b])
+    }
+    static func xSpectrum(_ z: LEDZone) -> RazerReport { .init(cls: 0x0F, cmd: 0x02, size: 0x06, args: [VARSTORE, z.rawValue, 0x03]) }
+    static func xOff(_ z: LEDZone) -> RazerReport { .init(cls: 0x0F, cmd: 0x02, size: 0x06, args: [VARSTORE, z.rawValue, 0x00]) }
+    static func xGetEffect(_ z: LEDZone) -> RazerReport { .init(cls: 0x0F, cmd: 0x82, size: 0x0C, args: [VARSTORE, z.rawValue]) }
+
+    // Scroll wheel (Basilisk V3 etc.): mode 0 = tactile, 1 = free spin.
+    static func getScrollMode() -> RazerReport { .init(cls: 0x02, cmd: 0x94, size: 0x02, args: [VARSTORE]) }
+    static func setScrollMode(freeSpin: Bool) -> RazerReport { .init(cls: 0x02, cmd: 0x14, size: 0x02, args: [VARSTORE, freeSpin ? 1 : 0]) }
+    static func getScrollAccel() -> RazerReport { .init(cls: 0x02, cmd: 0x96, size: 0x02, args: [VARSTORE]) }
+    static func setScrollAccel(_ on: Bool) -> RazerReport { .init(cls: 0x02, cmd: 0x16, size: 0x02, args: [VARSTORE, on ? 1 : 0]) }
+    static func getSmartReel() -> RazerReport { .init(cls: 0x02, cmd: 0x97, size: 0x02, args: [VARSTORE]) }
+    static func setSmartReel(_ on: Bool) -> RazerReport { .init(cls: 0x02, cmd: 0x17, size: 0x02, args: [VARSTORE, on ? 1 : 0]) }
 
     static func getIdle() -> RazerReport { .init(cls: 0x07, cmd: 0x83, size: 0x02) }
     static func setIdle(_ seconds: Int) -> RazerReport {

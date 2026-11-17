@@ -46,6 +46,9 @@ final class MouseController: ObservableObject {
     @Published var effects: [LEDZone: LightEffect] = [:]
     @Published var colors: [LEDZone: Color] = [:]
     @Published var brightness: [LEDZone: Double] = [:]
+    @Published var freeSpin = false
+    @Published var scrollAccel = false
+    @Published var smartReel = false
 
     @Published var status = "Looking for your mouse…"
     @Published var statusIsError = false
@@ -86,7 +89,7 @@ final class MouseController: ObservableObject {
     func refreshDevices() {
         var found = Self.scan()
         if ProcessInfo.processInfo.environment["NAGA_DEMO"] != nil, found.isEmpty {
-            found = [FoundDevice(pid: 0x003E, location: 0, product: "Demo")]   // UI preview only
+            found = [FoundDevice(pid: UInt16(ProcessInfo.processInfo.environment["NAGA_DEMO"] ?? "", radix: 16) ?? 0x003E, location: 0, product: "Demo")]   // UI preview only
         }
         devices = found
         log("Scan: " + (found.isEmpty ? "no Razer USB devices" :
@@ -103,7 +106,9 @@ final class MouseController: ObservableObject {
 
     // MARK: transport
 
-    nonisolated private static func send(_ dev: FoundDevice, _ req: RazerReport) throws -> (RazerReport, Int32) {
+    nonisolated private static func send(_ dev: FoundDevice, _ req0: RazerReport) throws -> (RazerReport, Int32) {
+        let model = dev.model
+        let req = req0.withTransactionID(model.transactionID)
         var lastErr: Error = TransportError.mismatch
         for attempt in 0..<4 {
             var out = [UInt8](repeating: 0, count: 90)
@@ -111,7 +116,7 @@ final class MouseController: ObservableObject {
             let wait: UInt32 = attempt == 0 ? 1500 : 8000
             let r = req.bytes.withUnsafeBufferPointer { inb in
                 out.withUnsafeMutableBufferPointer { outb in
-                    rz_transfer(dev.location, dev.pid, 0, inb.baseAddress, outb.baseAddress, wait, &path)
+                    rz_transfer(dev.location, dev.pid, model.usbIndex, inb.baseAddress, outb.baseAddress, wait, &path)
                 }
             }
             if r != 0 { lastErr = TransportError.io(r); usleep(10_000); continue }
@@ -164,7 +169,12 @@ final class MouseController: ObservableObject {
         let m = dev.model
         var reqs: [RazerReport] = [Cmd.firmware(), m.byteDPI ? Cmd.getDPIByte() : Cmd.getDPI(), Cmd.getPoll()]
         if m.wireless { reqs += [Cmd.battery(), Cmd.charging(), Cmd.getIdle()] }
-        for z in m.zones { reqs += [Cmd.getBrightness(z), Cmd.getLEDState(z), Cmd.getLEDEffect(z), Cmd.getLEDRGB(z)] }
+        if m.family == .legacy {
+            for z in m.zones { reqs += [Cmd.getBrightness(z), Cmd.getLEDState(z), Cmd.getLEDEffect(z), Cmd.getLEDRGB(z)] }
+        } else {
+            for z in m.zones { reqs.append(Cmd.xGetBrightness(z)) }
+        }
+        if m.scrollControls { reqs += [Cmd.getScrollMode(), Cmd.getScrollAccel(), Cmd.getSmartReel()] }
         run(reqs, label: "Connected to \(m.name)") { res, _ in
             var i = 0
             func next() -> RazerReport? { defer { i += 1 }; return res[i] }
@@ -183,6 +193,13 @@ final class MouseController: ObservableObject {
                 if let c = next() { self.charging = c.arg(1) == 1 }
                 if let t = next() { self.idleMinutes = max(1, (Int(t.arg(0)) << 8 | Int(t.arg(1))) / 60) }
             }
+            if m.family == .extended {
+                for z in m.zones {
+                    if let b = next() { self.brightness[z] = Double(b.arg(2)) / 255 * 100 }
+                    if self.effects[z] == nil { self.effects[z] = m.defaultEffect }
+                    if self.colors[z] == nil { self.colors[z] = Color(red: 0.27, green: 0.84, blue: 0.17) }
+                }
+            } else {
             for z in m.zones {
                 if let b = next() { self.brightness[z] = Double(b.arg(2)) / 255 * 100 }
                 let st = next(), ef = next(), c = next()
@@ -191,6 +208,12 @@ final class MouseController: ObservableObject {
                 else if self.effects[z] == nil { self.effects[z] = .staticColor }
                 if let c { self.colors[z] = Color(red: Double(c.arg(2)) / 255, green: Double(c.arg(3)) / 255, blue: Double(c.arg(4)) / 255) }
                 else if self.colors[z] == nil { self.colors[z] = Color(red: 0.27, green: 0.84, blue: 0.17) }
+            }
+            }
+            if m.scrollControls {
+                if let r = next() { self.freeSpin = r.arg(1) == 1 }
+                if let r = next() { self.scrollAccel = r.arg(1) == 1 }
+                if let r = next() { self.smartReel = r.arg(1) == 1 }
             }
         }
     }
@@ -245,6 +268,17 @@ final class MouseController: ObservableObject {
         let effect = effects[z] ?? .staticColor
         let (r, g, b) = rgb(colors[z] ?? .green)
         var reqs: [RazerReport] = []
+        if m.family == .extended {
+            switch effect {
+            case .off: reqs = [Cmd.xOff(z)]
+            case .staticColor: reqs = [Cmd.xStatic(z, r, g, b)]
+            case .breathing: reqs = [Cmd.xBreath(z, r, g, b)]
+            case .spectrum: reqs = [Cmd.xSpectrum(z)]
+            }
+            if z == .all { for other in m.zones where other != .all { effects[other] = effect; colors[other] = colors[z] } }
+            run(reqs, label: "\(z.label): \(effect.rawValue)") { _, _ in }
+            return
+        }
         switch effect {
         case .off: reqs = [Cmd.setLEDState(z, on: false)]
         case .staticColor:
@@ -263,7 +297,22 @@ final class MouseController: ObservableObject {
 
     func applyBrightness(_ z: LEDZone) {
         let v = UInt8(clamping: Int(((brightness[z] ?? 100) / 100 * 255).rounded()))
-        run([Cmd.setBrightness(z, v)], label: "\(z.label) brightness \(Int(brightness[z] ?? 100))%") { _, _ in }
+        let req = selected?.model.family == .extended ? Cmd.xBrightness(z, v) : Cmd.setBrightness(z, v)
+        if z == .all { for other in selected?.model.zones ?? [] { brightness[other] = brightness[z] } }
+        run([req], label: "\(z.label) brightness \(Int(brightness[z] ?? 100))%") { _, _ in }
+    }
+
+    func applyFreeSpin(_ on: Bool) {
+        freeSpin = on
+        run([Cmd.setScrollMode(freeSpin: on)], label: on ? "Wheel: free spin" : "Wheel: tactile clicks") { _, _ in }
+    }
+    func applyScrollAccel(_ on: Bool) {
+        scrollAccel = on
+        run([Cmd.setScrollAccel(on)], label: "Scroll acceleration \(on ? "on" : "off")") { _, _ in }
+    }
+    func applySmartReel(_ on: Bool) {
+        smartReel = on
+        run([Cmd.setSmartReel(on)], label: "Smart Reel \(on ? "on" : "off")") { _, _ in }
     }
 
     private func rgb(_ c: Color) -> (UInt8, UInt8, UInt8) {

@@ -6,17 +6,18 @@ let razerGreen = Color(red: 0.27, green: 0.84, blue: 0.17)
 @main
 struct NagaControlApp: App {
     @StateObject private var mouse = MouseController()
+    @StateObject private var scroll = ScrollInverter.shared
 
     var body: some Scene {
         WindowGroup("Naga Control") {
-            ContentView().environmentObject(mouse)
+            ContentView().environmentObject(mouse).environmentObject(scroll)
                 .frame(minWidth: 460, idealWidth: 480, minHeight: 600)
                 .preferredColorScheme(.dark)
         }
         .windowResizability(.contentSize)
 
         MenuBarExtra {
-            MenuDPI().environmentObject(mouse)
+            MenuDPI().environmentObject(mouse).environmentObject(scroll)
         } label: {
             Image(systemName: "computermouse.fill")
         }
@@ -25,6 +26,7 @@ struct NagaControlApp: App {
 
 struct MenuDPI: View {
     @EnvironmentObject var mouse: MouseController
+    @EnvironmentObject var scroll: ScrollInverter
     var body: some View {
         if let d = mouse.selected {
             Text("\(d.model.name) — \(mouse.dpiX) DPI")
@@ -39,15 +41,20 @@ struct MenuDPI: View {
             Text("No Razer mouse found")
         }
         Divider()
+        Toggle("Reverse mouse wheel", isOn: $scroll.reverseVertical)
         Button("Rescan") { mouse.refreshDevices() }
         Button("Quit") { NSApp.terminate(nil) }
     }
 }
 
-func presets(max: Int) -> [Int] { [400, 800, 1200, 1600, 2400, 3200, 4800, 6400, 8200].filter { $0 <= max } }
+func presets(max: Int) -> [Int] {
+    (max > 10000 ? [400, 800, 1600, 3200, 6400, 12000, 16000, 26000] : [400, 800, 1200, 1600, 2400, 3200, 4800, 6400, 8200])
+        .filter { $0 <= max }
+}
 
 struct ContentView: View {
     @EnvironmentObject var mouse: MouseController
+    @EnvironmentObject var scroll: ScrollInverter
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,8 +64,10 @@ struct ContentView: View {
                 ScrollView {
                     VStack(spacing: 14) {
                         performance(dev.model)
+                        scrolling(dev.model)
                         lighting(dev.model)
                         if dev.model.wireless { power }
+                        appSettings
                         if !dev.known { unknownNote(dev) }
                     }
                     .padding(16)
@@ -154,6 +163,40 @@ struct ContentView: View {
         }
     }
 
+    // MARK: scrolling
+    func scrolling(_ m: MouseModel) -> some View {
+        Card(title: "Scrolling", icon: "arrow.up.arrow.down") {
+            SwitchRow(title: "Reverse scroll wheel", subtitle: "Mouse wheels only. Trackpad keeps its own setting.",
+                      isOn: $scroll.reverseVertical)
+            SwitchRow(title: "Reverse horizontal scroll", subtitle: "Wheel tilt left/right", isOn: $scroll.reverseHorizontal)
+            if (scroll.reverseVertical || scroll.reverseHorizontal) && !scroll.trusted {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text("Needs Accessibility permission to flip scrolling.").font(.caption)
+                    Spacer()
+                    Button("Grant access") { scroll.requestAccess() }.controlSize(.small)
+                }
+            }
+            if m.scrollControls {
+                Divider().padding(.vertical, 2)
+                SwitchRow(title: "Free-spin wheel", subtitle: "Off = tactile clicks",
+                          isOn: Binding(get: { mouse.freeSpin }, set: { mouse.applyFreeSpin($0) }))
+                SwitchRow(title: "Smart Reel", subtitle: "Free-spins automatically when you flick the wheel",
+                          isOn: Binding(get: { mouse.smartReel }, set: { mouse.applySmartReel($0) }))
+                SwitchRow(title: "Scroll acceleration",
+                          isOn: Binding(get: { mouse.scrollAccel }, set: { mouse.applyScrollAccel($0) }))
+            }
+        }
+    }
+
+    var appSettings: some View {
+        Card(title: "App", icon: "gearshape") {
+            SwitchRow(title: "Open at login", isOn: Binding(get: { scroll.openAtLogin }, set: { scroll.setOpenAtLogin($0) }))
+            Text("Mouse settings are saved on the mouse itself. The app only needs to run for reversed scrolling.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: lighting
     func lighting(_ m: MouseModel) -> some View {
         Card(title: "Lighting", icon: "lightbulb.max") {
@@ -227,6 +270,7 @@ struct ContentView: View {
                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
             Button("Rescan") { mouse.refreshDevices() }.buttonStyle(.borderedProminent)
             Spacer()
+            scrolling(MouseModel.generic("")).padding(16)
         }.frame(maxWidth: .infinity)
     }
 
@@ -269,6 +313,23 @@ struct Card<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.13)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06)))
+    }
+}
+
+/// Label on the left, switch pinned to the right edge.
+struct SwitchRow: View {
+    let title: String
+    var subtitle: String? = nil
+    @Binding var isOn: Bool
+    var body: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: $isOn).labelsHidden().toggleStyle(.switch)
+        }
     }
 }
 
