@@ -57,6 +57,7 @@ final class MouseController: ObservableObject {
     private let queue = DispatchQueue(label: "naga.usb")
     private var pollTimer: Timer?
     private var dpiWork: DispatchWorkItem?
+    private var lightWork: [LEDZone: DispatchWorkItem] = [:]
 
     init() {
         refreshDevices()
@@ -94,15 +95,28 @@ final class MouseController: ObservableObject {
         devices = found
         log("Scan: " + (found.isEmpty ? "no Razer USB devices" :
             found.map { String(format: "%@ [1532:%04X]", $0.product, $0.pid) }.joined(separator: ", ")))
-        // Prefer a known Naga; otherwise any Razer device.
         if let cur = selected, found.contains(cur) { return }
-        selected = found.first(where: { $0.known }) ?? found.first
-        if selected != nil { readAll() } else {
+        // Prefer a known model; otherwise any Razer device.
+        select(found.first(where: { $0.known }) ?? found.first)
+    }
+
+    /// Switches to `d` (nil = nothing plugged in) and reads it. Everything known about the previous
+    /// mouse is dropped first, so its values can't be shown, or written, as if they were the new one's.
+    func select(_ d: FoundDevice?) {
+        if d != selected {
+            dpiWork?.cancel()
+            lightWork.values.forEach { $0.cancel() }
+            lightWork = [:]
+            firmware = ""; transportPath = ""
+            battery = nil; charging = false
+            effects = [:]; colors = [:]; brightness = [:]
+            freeSpin = false; scrollAccel = false; smartReel = false
+            selected = d
+        }
+        if d != nil { readAll() } else {
             setStatus("No Razer mouse found. Plug in the cable or the dock.", error: true)
         }
     }
-
-    func select(_ d: FoundDevice) { selected = d; readAll() }
 
     // MARK: transport
 
@@ -154,6 +168,8 @@ final class MouseController: ObservableObject {
                 }
             }
             DispatchQueue.main.async {
+                // The user switched mice (or unplugged this one) while the batch was in flight.
+                guard self.selected == dev else { return }
                 if path == 1 { self.transportPath = "USB control" } else if path == 2 { self.transportPath = "HID feature" }
                 for e in errors { self.log("\(label) – \(e)") }
                 if !quiet {
@@ -262,7 +278,16 @@ final class MouseController: ObservableObject {
         run([Cmd.setIdle(minutes * 60)], label: "Sleeps after \(minutes) min idle") { _, _ in }
     }
 
+    /// For continuous controls (the colour well): applies once the value has settled.
+    func applyLightingSoon(_ z: LEDZone) {
+        lightWork[z]?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.applyLighting(z) }
+        lightWork[z] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
     func applyLighting(_ z: LEDZone) {
+        lightWork[z]?.cancel()
         guard let m = selected?.model else { return }
         let effect = effects[z] ?? .staticColor
         let (r, g, b) = rgb(colors[z] ?? .green)

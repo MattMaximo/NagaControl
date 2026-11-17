@@ -207,7 +207,7 @@ struct ContentView: View {
                         Spacer()
                         if m.rgb && [LightEffect.staticColor, .breathing].contains(mouse.effects[z] ?? .staticColor) {
                             ColorPicker("", selection: Binding(get: { mouse.colors[z] ?? razerGreen },
-                                                               set: { mouse.colors[z] = $0; scheduleLight(z) }),
+                                                               set: { mouse.colors[z] = $0; mouse.applyLightingSoon(z) }),
                                         supportsOpacity: false).labelsHidden()
                         }
                         Picker("", selection: Binding(get: { mouse.effects[z] ?? .staticColor },
@@ -229,14 +229,6 @@ struct ContentView: View {
 
     func effects(for m: MouseModel) -> [LightEffect] {
         m.rgb ? LightEffect.allCases : [.staticColor, .breathing, .off]
-    }
-
-    @State private var lightWork: [LEDZone: DispatchWorkItem] = [:]
-    func scheduleLight(_ z: LEDZone) {
-        lightWork[z]?.cancel()
-        let w = DispatchWorkItem { mouse.applyLighting(z) }
-        lightWork[z] = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: w)
     }
 
     // MARK: power
