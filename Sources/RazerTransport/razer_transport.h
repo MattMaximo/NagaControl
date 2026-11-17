@@ -10,7 +10,6 @@
 #define RZ_MAX_DEVICES 16
 
 typedef struct {
-    uint16_t vendorID;
     uint16_t productID;
     uint32_t locationID;
     char product[128];
@@ -22,10 +21,8 @@ int rz_list_devices(rz_device_info *out, int max);
 /// Sends `request` (90 bytes) then reads the 90-byte response into `response`.
 /// Tries the raw USB control-transfer path first, then falls back to IOHID feature reports.
 /// `path_used` receives 1 for USB, 2 for HID. Returns 0 on success, else an IOReturn/negative code.
+/// Call from one thread at a time (the app uses a serial queue).
 int rz_transfer(uint32_t locationID, uint16_t productID, uint16_t interfaceIndex,
                 const uint8_t *request, uint8_t *response, uint32_t wait_us, int *path_used);
-
-/// Releases any cached device handles.
-void rz_close_all(void);
 
 #endif

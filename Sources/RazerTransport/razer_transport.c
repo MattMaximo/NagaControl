@@ -8,6 +8,7 @@
 #include <IOKit/usb/IOUSBLib.h>
 #include <IOKit/hid/IOHIDManager.h>
 #include <IOKit/hid/IOHIDKeys.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -57,20 +58,20 @@ int rz_list_devices(rz_device_info *out, int max) {
     if (!it) return 0;
     int count = 0;
     io_service_t s;
-    while ((s = IOIteratorNext(it)) && count < max) {
+    // Check the room first: IOIteratorNext hands back a retained object that must be released.
+    while (count < max && (s = IOIteratorNext(it))) {
         int64_t vid = 0, pid = 0, loc = 0;
         cf_int(s, "idVendor", &vid);
+        if (vid != RAZER_VID) { IOObjectRelease(s); continue; }
         cf_int(s, "idProduct", &pid);
         cf_int(s, "locationID", &loc);
-        rz_device_info *d = &out[count];
+        rz_device_info *d = &out[count++];
         memset(d, 0, sizeof(*d));
-        d->vendorID = (uint16_t)vid;
         d->productID = (uint16_t)pid;
         d->locationID = (uint32_t)loc;
         cf_str(s, "USB Product Name", d->product, sizeof(d->product));
         if (!d->product[0]) cf_str(s, "kUSBProductString", d->product, sizeof(d->product));
         IOObjectRelease(s);
-        if (d->vendorID == RAZER_VID) count++;
     }
     IOObjectRelease(it);
     return count;
@@ -143,6 +144,8 @@ static int usb_transfer(uint32_t locationID, uint16_t productID, uint16_t idx,
 
 // ---------- Path 2: IOHID feature reports ----------
 
+// Created on first use and kept for the life of the process. Only touched from the caller's
+// serial queue (rz_transfer is not re-entrant).
 static IOHIDManagerRef g_mgr = NULL;
 
 static int hid_transfer(uint32_t locationID, uint16_t productID,
@@ -166,6 +169,7 @@ static int hid_transfer(uint32_t locationID, uint16_t productID,
     CFIndex n = CFSetGetCount(set);
     if (n == 0) { CFRelease(set); return -12; }
     const void **devs = calloc((size_t)n, sizeof(void *));
+    if (!devs) { CFRelease(set); return -15; }
     CFSetGetValues(set, devs);
 
     int result = -13;
@@ -212,8 +216,4 @@ int rz_transfer(uint32_t locationID, uint16_t productID, uint16_t interfaceIndex
     if (h == 0) { if (path_used) *path_used = 2; return 0; }
     if (path_used) *path_used = 0;
     return r;
-}
-
-void rz_close_all(void) {
-    if (g_mgr) { CFRelease(g_mgr); g_mgr = NULL; }
 }
