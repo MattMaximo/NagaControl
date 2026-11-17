@@ -32,10 +32,51 @@ struct RazerReport {
     var cls: UInt8 { bytes[6] }
     var cmd: UInt8 { bytes[7] }
     func arg(_ i: Int) -> UInt8 { bytes[8 + i] }
+
+    /// Set commands have bit 7 of the command id clear; get commands have it set.
+    var isWrite: Bool { cmd & 0x80 == 0 }
 }
 
 enum RazerStatus: UInt8 {
     case busy = 1, ok = 2, failure = 3, timeout = 4, notSupported = 5
+}
+
+/// What a reply means for the request that produced it (rules from OpenRazer's razer_send_payload).
+enum ReplyVerdict: Equatable {
+    case ok                 // right command, status ok
+    case busy               // right command, mouse still working; OpenRazer counts this as success
+    case emptyAck           // no status/class/command at all; see `classify`
+    case mismatch           // reply belongs to some other command
+    case failed(UInt8)      // right command, status failure / timeout / not supported
+}
+
+extension RazerReport {
+    /// `allowEmptyAck`: the original Naga Epic answers some writes (DPI) with an all-zero report
+    /// while it applies them. Only accept that for a write, and only on models known to do it;
+    /// anywhere else an empty reply means nothing answered (wrong interface, sleeping mouse).
+    func classify(reply: RazerReport, allowEmptyAck: Bool) -> ReplyVerdict {
+        if reply.status == 0, reply.cls == 0, reply.cmd == 0 {
+            return allowEmptyAck && isWrite ? .emptyAck : .mismatch
+        }
+        if reply.cls != cls || reply.cmd != cmd { return .mismatch }
+        switch RazerStatus(rawValue: reply.status) {
+        case .ok: return .ok
+        case .busy: return .busy
+        default: return .failed(reply.status)
+        }
+    }
+
+    // Reply parsing. Argument positions from OpenRazer's razermouse_driver.c read handlers.
+    var firmwareVersion: String { "v\(arg(0)).\(arg(1))" }
+    /// 04/85: [store, x hi, x lo, y hi, y lo]
+    var dpi: (x: Int, y: Int) { (Int(arg(1)) << 8 | Int(arg(2)), Int(arg(3)) << 8 | Int(arg(4))) }
+    /// 04/81 (original Naga Epic): [x, y], one byte each
+    var dpiFromBytes: (x: Int, y: Int) { (Cmd.byteToDPI(arg(0)), Cmd.byteToDPI(arg(1))) }
+    var pollRate: Int? { [1: 1000, 2: 500, 8: 125][Int(arg(0))] }
+    /// 07/80: level 0...255 in the second argument
+    var batteryPercent: Int { Int((Double(arg(1)) / 255 * 100).rounded()) }
+    var isCharging: Bool { arg(1) == 1 }
+    var idleSeconds: Int { Int(arg(0)) << 8 | Int(arg(1)) }
 }
 
 enum LEDZone: UInt8, CaseIterable, Identifiable {
@@ -73,6 +114,9 @@ struct MouseModel {
     var usbIndex: UInt16 = 0          // USB interface the control transfer goes to (wIndex)
     var scrollControls = false        // free-spin / acceleration / smart reel
     var defaultEffect: LightEffect = .staticColor
+
+    /// See `RazerReport.classify`. Seen live on the original Naga Epic; kept for its legacy siblings.
+    var acceptsEmptyWriteAck: Bool { family == .legacy }
 
     static func forPID(_ pid: UInt16) -> MouseModel? {
         switch pid {
@@ -132,7 +176,8 @@ enum Cmd {
     static func getLEDRGB(_ z: LEDZone) -> RazerReport { .init(cls: 0x03, cmd: 0x81, size: 0x05, args: [VARSTORE, z.rawValue]) }
     static func getLEDState(_ z: LEDZone) -> RazerReport { .init(cls: 0x03, cmd: 0x80, size: 0x03, args: [VARSTORE, z.rawValue]) }
 
-    // Extended (class 0x0F) lighting, used by 2017+ mice.
+    // Extended (class 0x0F) lighting, used by 2017+ mice. There is no read command for the
+    // current effect (OpenRazer has none either), so the app can't show what the mouse is doing.
     static func xBrightness(_ z: LEDZone, _ b: UInt8) -> RazerReport { .init(cls: 0x0F, cmd: 0x04, size: 0x03, args: [VARSTORE, z.rawValue, b]) }
     static func xGetBrightness(_ z: LEDZone) -> RazerReport { .init(cls: 0x0F, cmd: 0x84, size: 0x03, args: [VARSTORE, z.rawValue]) }
     static func xStatic(_ z: LEDZone, _ r: UInt8, _ g: UInt8, _ b: UInt8) -> RazerReport {
@@ -143,7 +188,6 @@ enum Cmd {
     }
     static func xSpectrum(_ z: LEDZone) -> RazerReport { .init(cls: 0x0F, cmd: 0x02, size: 0x06, args: [VARSTORE, z.rawValue, 0x03]) }
     static func xOff(_ z: LEDZone) -> RazerReport { .init(cls: 0x0F, cmd: 0x02, size: 0x06, args: [VARSTORE, z.rawValue, 0x00]) }
-    static func xGetEffect(_ z: LEDZone) -> RazerReport { .init(cls: 0x0F, cmd: 0x82, size: 0x0C, args: [VARSTORE, z.rawValue]) }
 
     // Scroll wheel (Basilisk V3 etc.): mode 0 = tactile, 1 = free spin.
     static func getScrollMode() -> RazerReport { .init(cls: 0x02, cmd: 0x94, size: 0x02, args: [VARSTORE]) }

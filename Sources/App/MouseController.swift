@@ -110,7 +110,8 @@ final class MouseController: ObservableObject {
         let model = dev.model
         let req = req0.withTransactionID(model.transactionID)
         var lastErr: Error = TransportError.mismatch
-        for attempt in 0..<4 {
+        let lastAttempt = 3
+        for attempt in 0...lastAttempt {
             var out = [UInt8](repeating: 0, count: 90)
             var path: Int32 = 0
             let wait: UInt32 = attempt == 0 ? 1500 : 8000
@@ -121,15 +122,18 @@ final class MouseController: ObservableObject {
             }
             if r != 0 { lastErr = TransportError.io(r); usleep(10_000); continue }
             let resp = RazerReport(raw: out)
-            // The original Naga Epic answers some set commands (e.g. DPI) with an empty report while it
-            // applies them. Don't resend; the caller confirms with a read-back.
-            if req.cmd < 0x80, resp.status == 0, resp.cls == 0, resp.cmd == 0 { return (resp, path) }
-            if resp.status == RazerStatus.busy.rawValue && attempt < 3 { usleep(15_000); continue }
-            if resp.cls != req.cls || resp.cmd != req.cmd { lastErr = TransportError.mismatch; usleep(10_000); continue }
-            if resp.status == RazerStatus.ok.rawValue || resp.status == RazerStatus.busy.rawValue { return (resp, path) }
-            lastErr = TransportError.status(resp.status)
-            if resp.status == RazerStatus.notSupported.rawValue { break }
-            usleep(10_000)
+            switch req.classify(reply: resp, allowEmptyAck: model.acceptsEmptyWriteAck) {
+            case .ok: return (resp, path)
+            // Don't resend an empty-acked write; callers that care (DPI) confirm with a read-back.
+            case .emptyAck: return (resp, path)
+            // Give a busy mouse a few more tries, then take the answer like OpenRazer does.
+            case .busy: if attempt == lastAttempt { return (resp, path) }; usleep(15_000)
+            case .mismatch: lastErr = TransportError.mismatch; usleep(10_000)
+            case .failed(let status):
+                lastErr = TransportError.status(status)
+                if status == RazerStatus.notSupported.rawValue { throw lastErr }
+                usleep(10_000)
+            }
         }
         throw lastErr
     }
@@ -178,20 +182,16 @@ final class MouseController: ObservableObject {
         run(reqs, label: "Connected to \(m.name)") { res, _ in
             var i = 0
             func next() -> RazerReport? { defer { i += 1 }; return res[i] }
-            if let f = next() { self.firmware = "v\(f.arg(0)).\(f.arg(1))" }
+            if let f = next() { self.firmware = f.firmwareVersion }
             if let d = next() {
-                if m.byteDPI { self.dpiX = Cmd.byteToDPI(d.arg(0)); self.dpiY = Cmd.byteToDPI(d.arg(1)) }
-                else {
-                    self.dpiX = Int(d.arg(1)) << 8 | Int(d.arg(2))
-                    self.dpiY = Int(d.arg(3)) << 8 | Int(d.arg(4))
-                }
+                (self.dpiX, self.dpiY) = m.byteDPI ? d.dpiFromBytes : d.dpi
                 self.linkXY = self.dpiX == self.dpiY
             }
-            if let p = next() { self.pollRate = [1: 1000, 2: 500, 8: 125][Int(p.arg(0))] ?? 500 }
+            if let p = next() { self.pollRate = p.pollRate ?? 500 }
             if m.wireless {
-                if let b = next() { self.battery = Int((Double(b.arg(1)) / 255 * 100).rounded()) } else { self.battery = nil }
-                if let c = next() { self.charging = c.arg(1) == 1 }
-                if let t = next() { self.idleMinutes = max(1, (Int(t.arg(0)) << 8 | Int(t.arg(1))) / 60) }
+                self.battery = next()?.batteryPercent
+                if let c = next() { self.charging = c.isCharging }
+                if let t = next() { self.idleMinutes = max(1, t.idleSeconds / 60) }
             }
             if m.family == .extended {
                 for z in m.zones {
@@ -221,8 +221,8 @@ final class MouseController: ObservableObject {
     func readBattery() {
         guard let m = selected?.model, m.wireless else { return }
         run([Cmd.battery(), Cmd.charging()], label: "Battery", quiet: true) { res, _ in
-            if let b = res[0] { self.battery = Int((Double(b.arg(1)) / 255 * 100).rounded()) }
-            if let c = res[1] { self.charging = c.arg(1) == 1 }
+            if let b = res[0] { self.battery = b.batteryPercent }
+            if let c = res[1] { self.charging = c.isCharging }
         }
     }
 
@@ -239,8 +239,7 @@ final class MouseController: ObservableObject {
                 guard let d = res[1] else {
                     self.setStatus("DPI change failed: \(errs.first ?? "no reply")", error: true); return
                 }
-                let rx = m.byteDPI ? Cmd.byteToDPI(d.arg(0)) : Int(d.arg(1)) << 8 | Int(d.arg(2))
-                let ry = m.byteDPI ? Cmd.byteToDPI(d.arg(1)) : Int(d.arg(3)) << 8 | Int(d.arg(4))
+                let (rx, ry) = m.byteDPI ? d.dpiFromBytes : d.dpi
                 if abs(rx - x) <= 30 && abs(ry - y) <= 30 {
                     self.setStatus(self.linkXY ? "DPI set to \(x)" : "DPI set to \(x) × \(y)", error: false)
                 } else {
