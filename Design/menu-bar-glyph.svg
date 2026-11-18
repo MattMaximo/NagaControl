@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" role="img" aria-label="Naga Control menu-bar glyph">
+  <path data-part="ghost" fill-rule="evenodd" d="M3.5 15.4 C3.5 14 4 13.4 4 12 V8.5 A5 5 0 0 1 14 8.5 V12 C14 13.4 14.5 14 14.5 15.4 C14.5 17.55 11.5 17.55 11.5 15.4 V15.1 A.5 .5 0 0 0 10.5 15.1 V15.4 C10.5 17.55 7.5 17.55 7.5 15.4 V15.1 A.5 .5 0 0 0 6.5 15.1 V15.4 C6.5 17.55 3.5 17.55 3.5 15.4 Z M5.9 8 a1.1 1.1 0 1 0 2.2 0 a1.1 1.1 0 1 0 -2.2 0 Z M9.9 8 a1.1 1.1 0 1 0 2.2 0 a1.1 1.1 0 1 0 -2.2 0 Z"/>
+  <path data-part="headset-band" d="M2.25 8.4 V8 A6.75 6.75 0 0 1 15.75 8 V8.4" fill="none" stroke="#000" stroke-width="1.5"/>
+  <rect data-part="headset-cup-left" x=".5" y="5" width="2.5" height="6" rx="1.1"/>
+  <rect data-part="headset-cup-right" x="15" y="5" width="2.5" height="6" rx="1.1"/>
+</svg>

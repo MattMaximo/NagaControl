@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="Naga Control app icon, 64 px">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="1.5" x2="0" y2="14.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#33373F"/><stop offset="1" stop-color="#121316"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="8" cy="7" r="6.2" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#44D62C" stop-opacity=".46"/><stop offset=".55" stop-color="#44D62C" stop-opacity=".13"/><stop offset="1" stop-color="#44D62C" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile-clip"><path d="M5.97 1.50 L10.03 1.50 C11.32 1.50 11.96 1.50 12.65 1.72 C13.41 1.99 14.01 2.59 14.28 3.35 C14.50 4.04 14.50 4.68 14.50 5.97 L14.50 10.03 C14.50 11.32 14.50 11.96 14.28 12.65 C14.01 13.41 13.41 14.01 12.65 14.28 C11.96 14.50 11.32 14.50 10.03 14.50 L5.97 14.50 C4.68 14.50 4.04 14.50 3.35 14.28 C2.59 14.01 1.99 13.41 1.72 12.65 C1.50 11.96 1.50 11.32 1.50 10.03 L1.50 5.97 C1.50 4.68 1.50 4.04 1.72 3.35 C1.99 2.59 2.59 1.99 3.35 1.72 C4.04 1.50 4.68 1.50 5.97 1.50 Z"/></clipPath>
+  </defs>
+  <path d="M5.97 1.50 L10.03 1.50 C11.32 1.50 11.96 1.50 12.65 1.72 C13.41 1.99 14.01 2.59 14.28 3.35 C14.50 4.04 14.50 4.68 14.50 5.97 L14.50 10.03 C14.50 11.32 14.50 11.96 14.28 12.65 C14.01 13.41 13.41 14.01 12.65 14.28 C11.96 14.50 11.32 14.50 10.03 14.50 L5.97 14.50 C4.68 14.50 4.04 14.50 3.35 14.28 C2.59 14.01 1.99 13.41 1.72 12.65 C1.50 11.96 1.50 11.32 1.50 10.03 L1.50 5.97 C1.50 4.68 1.50 4.04 1.72 3.35 C1.99 2.59 2.59 1.99 3.35 1.72 C4.04 1.50 4.68 1.50 5.97 1.50 Z" fill="url(#tile)"/>
+  <rect x="1.5" y="1.5" width="13" height="13" fill="url(#glow)" clip-path="url(#tile-clip)"/>
+  <path d="M5.91 1.62 L10.09 1.62 C11.33 1.62 11.94 1.62 12.61 1.83 C13.33 2.10 13.90 2.67 14.17 3.39 C14.38 4.06 14.38 4.67 14.38 5.91 L14.38 10.09 C14.38 11.33 14.38 11.94 14.17 12.61 C13.90 13.33 13.33 13.90 12.61 14.17 C11.94 14.38 11.33 14.38 10.09 14.38 L5.91 14.38 C4.67 14.38 4.06 14.38 3.39 14.17 C2.67 13.90 2.10 13.33 1.83 12.61 C1.62 11.94 1.62 11.33 1.62 10.09 L1.62 5.91 C1.62 4.67 1.62 4.06 1.83 3.39 C2.10 2.67 2.67 2.10 3.39 1.83 C4.06 1.62 4.67 1.62 5.91 1.62 Z" fill="none" stroke="#fff" stroke-opacity=".13" stroke-width=".25"/>
+  <g transform="translate(8 8) scale(.875) translate(-8 -7.6)">
+    <path data-part="headset-band" d="M3 8.4 V8 A5 5.5 0 0 1 13 8 V8.4" fill="none" stroke="#BCC3CF"/>
+    <path data-part="ghost" d="M4 8 A4 4 0 0 1 12 8 V12 C12 13.45 10 13.45 10 12 V11.8 A.5 .5 0 0 0 9 11.8 V12 C9 13.45 7 13.45 7 12 V11.8 A.5 .5 0 0 0 6 11.8 V12 C6 13.45 4 13.45 4 12 Z" fill="#ffffff"/>
+    <circle data-eye="left" cx="5.75" cy="7.25" r=".78" fill="#060505"/>
+    <circle data-eye="right" cx="10.25" cy="7.25" r=".78" fill="#060505"/>
+    <path data-part="mouth" d="M7.1 8.55 Q8 9.65 8.9 8.55" fill="none" stroke="#060505" stroke-width=".52" stroke-linecap="round"/>
+    <rect data-part="headset-cup-left" x="2" y="6" width="2" height="4" rx=".8" fill="#44D62C"/>
+    <rect data-part="headset-cup-right" x="12" y="6" width="2" height="4" rx=".8" fill="#44D62C"/>
+    <circle data-reflection="left" cx="5.48" cy="6.95" r=".23" fill="#fafafa"/>
+    <circle data-reflection="right" cx="9.98" cy="6.95" r=".23" fill="#fafafa"/>
+  </g>
+</svg>
