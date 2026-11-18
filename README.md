@@ -23,7 +23,7 @@ Also has entries for the Naga Epic Chroma (003E wired, 003F dock) and Basilisk V
 
 ## Build and test
     ./build.sh        # -> build/Naga Control.app (universal). Wipes build/ first.
-    swiftc -swift-version 5 Sources/App/RazerProtocol.swift Tests/main.swift -o build/selftest && build/selftest
+    swiftc -swift-version 5 Sources/App/RazerProtocol.swift Sources/App/ButtonRemapper.swift Tests/main.swift -o build/selftest && build/selftest
 
 The selftest needs no mouse. It prints `ALL PASS` and exits 0 only when every check passed.
 UI preview with no Razer device plugged in: `NAGA_DEMO=0099 build/Naga\ Control.app/Contents/MacOS/NagaControl`

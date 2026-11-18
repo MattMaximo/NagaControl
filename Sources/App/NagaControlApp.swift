@@ -51,16 +51,36 @@ func presets(max: Int) -> [Int] {
 struct ContentView: View {
     @EnvironmentObject var mouse: MouseController
     @EnvironmentObject var scroll: ScrollInverter
+    @ObservedObject var remap = ButtonRemapper.shared
     @State private var showLog = false
+    @State private var cardsHeight: CGFloat = 500
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
+            // Scrolls only when the panel would be taller than the screen (small laptops).
+            ScrollView {
+                cards.background(GeometryReader { g in Color.clear.preference(key: HeightKey.self, value: g.size.height) })
+            }
+            .scrollIndicators(.automatic)
+            .frame(height: min(cardsHeight, (NSScreen.main?.visibleFrame.height ?? 800) - 120))
+            .onPreferenceChange(HeightKey.self) { cardsHeight = $0 }
+            if showLog { logView }
+            Divider()
+            footer
+        }
+        .background(Theme.page)
+        .tint(razerGreen)
+        .controlSize(.small)
+    }
+
+    var cards: some View {
             VStack(spacing: 8) {
                 if let dev = mouse.selected {
                     performance(dev.model)
                     scrolling(dev.model)
+                    if !dev.model.buttons.isEmpty { buttons(dev) }
                     lighting(dev.model)
                     if dev.model.wireless { power }
                     if !dev.known { unknownNote(dev) }
@@ -70,13 +90,6 @@ struct ContentView: View {
                 }
             }
             .padding(10)
-            if showLog { logView }
-            Divider()
-            footer
-        }
-        .background(Theme.page)
-        .tint(razerGreen)
-        .controlSize(.small)
     }
 
     // MARK: header
@@ -193,6 +206,46 @@ struct ContentView: View {
         }
     }
 
+    // MARK: buttons
+    func buttons(_ dev: FoundDevice) -> some View {
+        let list = dev.model.buttons + MouseButtonID.allCases.filter { remap.seen.contains($0) && !dev.model.buttons.contains($0) }
+        let usesNormal = list.contains { $0.mouseButtonNumber != nil && remap.action(dev.pid, $0) != .standard }
+        let usesSpecial = remap.wantsDriverMode(dev.pid)
+        return Card(title: "Buttons", icon: "computermouse") {
+            Text("Press a button on the mouse to find its row.").font(.system(size: 10)).foregroundStyle(.secondary)
+            ForEach(list) { b in
+                Row(b.label) {
+                    HStack(spacing: 6) {
+                        Circle().fill(remap.lastPressed == b ? razerGreen : Color.clear).frame(width: 6, height: 6)
+                        Picker("", selection: Binding(get: { remap.action(dev.pid, b) },
+                                                      set: { remap.setAction(dev.pid, b, $0); mouse.syncDriverMode() })) {
+                            ForEach(ButtonAction.menu) { Text($0.label).tag($0) }
+                        }.labelsHidden().fixedSize()
+                    }
+                }
+            }
+            if usesNormal && !remap.accessibilityGranted {
+                permissionRow("Side buttons need Accessibility access") { remap.requestAccessibilityIfNeeded() }
+            }
+            if usesSpecial && !remap.inputMonitoringGranted {
+                permissionRow("Paddle/top buttons need Input Monitoring access") {
+                    remap.requestInputMonitoringIfNeeded()
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+                }
+            }
+        }
+        .onAppear { remap.refreshPermissions() }
+    }
+
+    func permissionRow(_ text: String, grant: @escaping () -> Void) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Text(text).font(.system(size: 11))
+            Spacer()
+            Button("Grant", action: grant)
+        }
+    }
+
     // MARK: lighting
     func lighting(_ m: MouseModel) -> some View {
         Card(title: "Lighting", icon: "lightbulb.max") {
@@ -292,6 +345,11 @@ struct ContentView: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Color.white)
     }
+}
+
+struct HeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 struct Card<Content: View>: View {

@@ -66,6 +66,10 @@ final class MouseController: ObservableObject {
     private var lightWork: [LEDZone: DispatchWorkItem] = [:]
 
     init() {
+        ButtonRemapper.shared.standardHandler = { [weak self] b, down in self?.emulateStandard(b, down: down) }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.leaveDriverModeSync() }
+        }
         refreshDevices()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
@@ -103,6 +107,8 @@ final class MouseController: ObservableObject {
         }
         devices = found
         applySavedPointerAccel(found)
+        ButtonRemapper.shared.setConnected(Set(found.map(\.pid)))
+        syncDriverMode()
         log("Scan: " + (found.isEmpty ? "no Razer USB devices" :
             found.map { String(format: "%@ [1532:%04X]", $0.product, $0.pid) }.joined(separator: ", ")))
         if let cur = selected, found.contains(cur) {
@@ -366,6 +372,64 @@ final class MouseController: ObservableObject {
     func applySmartReel(_ on: Bool) {
         smartReel = on
         run([Cmd.setSmartReel(on)], label: "Smart Reel \(on ? "on" : "off")") { _, _ in }
+    }
+
+    // MARK: driver mode (lets remapped special buttons reach the app)
+
+    private var driverModeOn: Set<String> = []
+
+    /// Puts each connected mouse with remapped special buttons into driver mode, and the rest back
+    /// to normal mode. Called on every scan and whenever a mapping changes.
+    func syncDriverMode() {
+        for d in devices where !d.model.buttons.isEmpty {
+            let want = ButtonRemapper.shared.wantsDriverMode(d.pid)
+            let isOn = driverModeOn.contains(d.id)
+            guard want != isOn else { continue }
+            let req = Cmd.setDeviceMode(want ? 0x03 : 0x00)
+            queue.async {
+                let ok = (try? Self.send(d, req)) != nil
+                DispatchQueue.main.async {
+                    if ok { if want { self.driverModeOn.insert(d.id) } else { self.driverModeOn.remove(d.id) } }
+                    self.log("\(d.model.name): \(want ? "driver" : "normal") mode \(ok ? "on" : "FAILED")")
+                }
+            }
+        }
+        driverModeOn.formIntersection(Set(devices.map(\.id)))
+    }
+
+    /// On quit: hand the buttons back to the mouse's firmware so DPI/sniper keep working without the app.
+    func leaveDriverModeSync() {
+        for d in devices where driverModeOn.contains(d.id) {
+            _ = try? Self.send(d, Cmd.setDeviceMode(0x00))
+        }
+        driverModeOn = []
+    }
+
+    /// In driver mode the firmware no longer handles its own buttons, so "Default" is emulated here.
+    private var sniperRestore: Int?
+    private func emulateStandard(_ b: MouseButtonID, down: Bool) {
+        guard let dev = devices.first(where: { driverModeOn.contains($0.id) }) else { return }
+        if dev != selected { select(dev) }
+        let stages = presets(max: dev.model.maxDPI).filter { $0 <= 6400 }
+        func setDPI(_ v: Int) { dpiX = v; dpiY = v; linkXY = true; applyDPI(debounce: false) }
+        switch b {
+        case .sniper:
+            if down { sniperRestore = dpiX; setDPI(400) }
+            else if let r = sniperRestore { sniperRestore = nil; setDPI(r) }
+        case .dpiCycle where down:
+            setDPI(stages.first(where: { $0 > dpiX }) ?? stages.first ?? 800)
+        case .dpiUp where down:
+            setDPI(stages.first(where: { $0 > dpiX }) ?? dpiX)
+        case .dpiDown where down:
+            setDPI(stages.last(where: { $0 < dpiX }) ?? dpiX)
+        case .scrollMode where down:
+            applyFreeSpin(!freeSpin)
+        case .tiltLeft where down, .tiltRight where down:
+            let e = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 2, wheel1: 0,
+                            wheel2: b == .tiltLeft ? 1 : -1, wheel3: 0)
+            e?.post(tap: .cghidEventTap)
+        default: break
+        }
     }
 
     // MARK: pointer acceleration (per mouse, macOS side)

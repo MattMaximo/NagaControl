@@ -114,6 +114,7 @@ struct MouseModel {
     var usbIndex: UInt16 = 0          // USB interface the control transfer goes to (wIndex)
     var scrollControls = false        // free-spin / acceleration / smart reel
     var defaultEffect: LightEffect = .staticColor
+    var buttons: [MouseButtonID] = []   // remappable buttons shown in the Buttons card
 
     /// See `RazerReport.classify`. Seen live on the original Naga Epic; kept for its legacy siblings.
     var acceptsEmptyWriteAck: Bool { family == .legacy }
@@ -125,10 +126,12 @@ struct MouseModel {
         case 0x001F: return MouseModel(name: "Naga Epic", maxDPI: 5600, byteDPI: true, wireless: true, zones: [.scrollWheel], rgb: true)
         case 0x0099: return MouseModel(name: "Basilisk V3", maxDPI: 26000, byteDPI: false, wireless: false,
                                        zones: [.all, .logo, .scrollWheel], rgb: true, family: .extended,
-                                       transactionID: 0x1F, usbIndex: 3, scrollControls: true, defaultEffect: .spectrum)
+                                       transactionID: 0x1F, usbIndex: 3, scrollControls: true, defaultEffect: .spectrum,
+                                       buttons: [.back, .forward, .sniper, .middle, .tiltLeft, .tiltRight, .dpiCycle, .scrollMode])
         case 0x00CB: return MouseModel(name: "Basilisk V3 35K", maxDPI: 35000, byteDPI: false, wireless: false,
                                        zones: [.all, .logo, .scrollWheel], rgb: true, family: .extended,
-                                       transactionID: 0x1F, usbIndex: 3, scrollControls: true, defaultEffect: .spectrum)
+                                       transactionID: 0x1F, usbIndex: 3, scrollControls: true, defaultEffect: .spectrum,
+                                       buttons: [.back, .forward, .sniper, .middle, .tiltLeft, .tiltRight, .dpiCycle, .scrollMode])
         default: return nil
         }
     }
@@ -195,6 +198,10 @@ enum Cmd {
     static func setScrollAccel(_ on: Bool) -> RazerReport { .init(cls: 0x02, cmd: 0x16, size: 0x02, args: [VARSTORE, on ? 1 : 0]) }
     static func getSmartReel() -> RazerReport { .init(cls: 0x02, cmd: 0x97, size: 0x02, args: [VARSTORE]) }
     static func setSmartReel(_ on: Bool) -> RazerReport { .init(cls: 0x02, cmd: 0x17, size: 0x02, args: [VARSTORE, on ? 1 : 0]) }
+
+    /// 0x00 = normal (firmware handles DPI/sniper buttons), 0x03 = driver mode (buttons reported to the host).
+    static func setDeviceMode(_ mode: UInt8) -> RazerReport { .init(cls: 0x00, cmd: 0x04, size: 0x02, args: [mode, 0x00]) }
+    static func getDeviceMode() -> RazerReport { .init(cls: 0x00, cmd: 0x84, size: 0x02) }
 
     static func getIdle() -> RazerReport { .init(cls: 0x07, cmd: 0x83, size: 0x02) }
     static func setIdle(_ seconds: Int) -> RazerReport {

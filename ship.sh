@@ -12,7 +12,7 @@ cp Design/MenuBarIcon.png Resources/MenuBarIcon.png
 cp Design/MenuBarIcon@2x.png Resources/MenuBarIcon@2x.png
 ./build.sh
 cp Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png "$APP/Contents/Resources/"
-swiftc -swift-version 5 Sources/App/RazerProtocol.swift Tests/main.swift -o build/selftest && build/selftest | tail -1
+swiftc -swift-version 5 Sources/App/RazerProtocol.swift Sources/App/ButtonRemapper.swift Tests/main.swift -o build/selftest && build/selftest | tail -1
 
 op read --no-newline "op://BooStudio/Boo Desktop Signing/keychain-password" | ~/Tools/keychain-unlock/unlock "$KC"
 codesign --force --options runtime --timestamp --keychain "$KC" --sign "$ID" "$APP"

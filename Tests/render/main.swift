@@ -23,7 +23,7 @@ MainActor.assumeIsolated {
   let win = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
   win.contentView = host; win.appearance = NSAppearance(named: .aqua); host.layoutSubtreeIfNeeded()
   NSApp.setActivationPolicy(.accessory); win.orderFrontRegardless(); win.makeKey(); NSApp.activate(ignoringOtherApps: true)
-  RunLoop.main.run(until: Date().addingTimeInterval(1)); m.status = "Smart Reel on"; m.statusIsError = false; RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+  RunLoop.main.run(until: Date().addingTimeInterval(1)); host.frame.size = host.fittingSize; RunLoop.main.run(until: Date().addingTimeInterval(0.5)); m.status = "Smart Reel on"; m.statusIsError = false; RunLoop.main.run(until: Date().addingTimeInterval(0.3))
   let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds)!; host.cacheDisplay(in: host.bounds, to: rep)
   try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[1]))
   print("rendered \(Int(size.width))x\(Int(size.height))")
