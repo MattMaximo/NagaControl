@@ -108,6 +108,8 @@ struct ContentView: View {
             }
             Button { mouse.rescan() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless).foregroundStyle(Theme.inkSoft).help("Re-read the mouse")
+            Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
+                .buttonStyle(.borderless).foregroundStyle(Theme.inkSoft).help("Quit Naga Control")
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Color.white)
