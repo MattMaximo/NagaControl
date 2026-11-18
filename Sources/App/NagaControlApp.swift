@@ -201,10 +201,16 @@ struct ContentView: View {
                     }.labelsHidden().fixedSize()
                     // Fixed slot so every row's brightness slider lines up, with or without a colour well.
                     Group {
-                        if m.rgb && [LightEffect.staticColor, .breathing].contains(effect) {
-                            ColorPicker("", selection: Binding(get: { mouse.colors[z] ?? MouseController.defaultColor },
-                                                               set: { mouse.colors[z] = $0; mouse.applyLightingSoon(z) }),
-                                        supportsOpacity: false).labelsHidden()
+                        if m.rgb {
+                            // The system ColorPicker opens NSColorPanel, which a menu-bar panel can't host
+                            // (it never shows). Use our own swatch popover instead.
+                            SwatchButton(color: Binding(get: { mouse.colors[z] ?? MouseController.defaultColor },
+                                                        set: {
+                                                            mouse.colors[z] = $0
+                                                            // Picking a colour while on Spectrum/Off means "show this colour".
+                                                            if ![LightEffect.staticColor, .breathing].contains(effect) { mouse.effects[z] = .staticColor }
+                                                            mouse.applyLighting(z)
+                                                        }))
                         } else { Color.clear }
                     }.frame(width: 34, height: 18)
                     Image(systemName: "sun.max").font(.system(size: 10)).foregroundStyle(.secondary)
@@ -322,6 +328,42 @@ struct SwitchRow: View {
     @Binding var isOn: Bool
     var body: some View {
         Row(title) { Toggle("", isOn: $isOn).labelsHidden().toggleStyle(.switch).controlSize(.mini) }
+    }
+}
+
+/// Colour dot that opens a small grid of preset colours.
+struct SwatchButton: View {
+    @Binding var color: Color
+    @State private var open = false
+    static let presets: [(String, Color)] = [
+        ("White", .white),
+        ("Razer green", MouseController.defaultColor),
+        ("Red", Color(red: 1, green: 0, blue: 0)),
+        ("Orange", Color(red: 1, green: 0.45, blue: 0)),
+        ("Yellow", Color(red: 1, green: 0.85, blue: 0)),
+        ("Cyan", Color(red: 0, green: 0.85, blue: 1)),
+        ("Blue", Color(red: 0, green: 0.25, blue: 1)),
+        ("Purple", Color(red: 0.55, green: 0, blue: 1)),
+        ("Pink", Color(red: 1, green: 0.2, blue: 0.6)),
+    ]
+    var body: some View {
+        Button { open.toggle() } label: {
+            Circle().fill(color).frame(width: 16, height: 16)
+                .overlay(Circle().stroke(Color.black.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(.plain).help("Pick a colour")
+        .popover(isPresented: $open, arrowEdge: .bottom) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(26), spacing: 6), count: 5), spacing: 6) {
+                ForEach(Self.presets, id: \.0) { name, c in
+                    Button { color = c; open = false } label: {
+                        Circle().fill(c).frame(width: 22, height: 22)
+                            .overlay(Circle().stroke(Color.black.opacity(0.25), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain).help(name)
+                }
+            }
+            .padding(10)
+        }
     }
 }
 
