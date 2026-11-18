@@ -17,5 +17,9 @@ for ARCH in arm64 x86_64; do
 done
 lipo -create "$OUT/obj/NagaControl_arm64" "$OUT/obj/NagaControl_x86_64" -output "$APP/Contents/MacOS/NagaControl"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+VERSION=$(cat VERSION)
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(git rev-list --count HEAD 2>/dev/null || echo 1)" "$APP/Contents/Info.plist"
+cp Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png "$APP/Contents/Resources/"
 [[ -f Resources/AppIcon.icns ]] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 echo "Built $APP"

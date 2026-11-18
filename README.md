@@ -50,3 +50,13 @@ Build after `./build.sh`, with `O=build/obj/transport_$(uname -m).o H=Sources/Ra
 - Basilisk V3 (0099): transaction id 0x1F, control transfers to interface 3 (per OpenRazer). Not yet verified live.
   Checklist: `.audit/FABLE-REVIEW.md`.
 - Scroll reversal: CGEventTap flips only non-continuous (wheel) events; needs Accessibility permission.
+
+## Updates
+Installed copies update themselves from this repo's GitHub Releases (gear menu → Check for updates,
+or the green "Update" button). Releases are notarized and Developer-ID signed; the app refuses any
+download not signed by team 8Z64Q39H79. Publish with `./release.sh <version> "notes"`.
+
+## Credits
+Razer protocol details come from [OpenRazer](https://github.com/openrazer/openrazer) (GPL-2.0; used as
+a reference, no code copied). The per-mouse acceleration approach follows
+[LinearMouse](https://github.com/linearmouse/linearmouse) (MIT).

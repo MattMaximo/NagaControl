@@ -19,6 +19,8 @@ struct NagaControlApp: App {
     @StateObject private var mouse = MouseController()
     @StateObject private var scroll = ScrollInverter.shared
 
+    init() { Updater.shared.start() }
+
     var body: some Scene {
         // Menu-bar-only app (LSUIElement): clicking the icon opens the full control panel.
         MenuBarExtra {
@@ -52,6 +54,7 @@ struct ContentView: View {
     @EnvironmentObject var mouse: MouseController
     @EnvironmentObject var scroll: ScrollInverter
     @ObservedObject var remap = ButtonRemapper.shared
+    @ObservedObject var updater = Updater.shared
     @State private var showLog = false
     @State private var cardsHeight: CGFloat = 500
 
@@ -118,6 +121,13 @@ struct ContentView: View {
                 } label: { Image(systemName: "chevron.up.chevron.down") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help("Switch mouse")
+            }
+            if let v = updater.availableVersion {
+                Button { Task { await updater.install() } } label: { Text("Update \(v)").padding(.horizontal, 6) }
+                    .buttonStyle(Chip(active: true)).fixedSize()
+                    .help("Install Naga Control \(v) and relaunch")
+            } else if updater.state == .installing {
+                ProgressView().controlSize(.mini)
             }
             Button { mouse.rescan() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless).foregroundStyle(Theme.inkSoft).help("Re-read the mouse")
@@ -323,6 +333,16 @@ struct ContentView: View {
         .frame(height: 110).background(Color.white)
     }
 
+    var updateMenuLabel: String {
+        switch updater.state {
+        case .checking: return "Checking for updates…"
+        case .upToDate: return "Up to date (v\(Updater.currentVersion))"
+        case .available(let v): return "Update available: v\(v)"
+        case .failed(let e): return "Update check failed: \(e)"
+        default: return "Check for updates (v\(Updater.currentVersion))"
+        }
+    }
+
     var footer: some View {
         HStack(spacing: 6) {
             Circle().fill(mouse.statusIsError ? Color.orange : razerGreen).frame(width: 6, height: 6)
@@ -336,6 +356,8 @@ struct ContentView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(mouse.diagnostics(), forType: .string)
                 }
+                Divider()
+                Button(updateMenuLabel) { Task { await updater.check() } }
                 Divider()
                 Button("Quit Naga Control") { NSApp.terminate(nil) }
             } label: { Image(systemName: "gearshape") }
