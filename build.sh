@@ -8,9 +8,10 @@ rm -rf "$OUT"; mkdir -p "$OUT/obj" "$APP/Contents/MacOS" "$APP/Contents/Resource
 
 for ARCH in arm64 x86_64; do
   clang -c -O2 -arch $ARCH -mmacosx-version-min=14.0 Sources/RazerTransport/razer_transport.c -o "$OUT/obj/transport_$ARCH.o"
+  clang -c -O2 -arch $ARCH -mmacosx-version-min=14.0 Sources/RazerTransport/pointer_accel.c -o "$OUT/obj/accel_$ARCH.o"
   swiftc -O -swift-version 5 -target $ARCH-apple-macos14.0 \
     -import-objc-header Sources/RazerTransport/razer_transport.h \
-    Sources/App/*.swift "$OUT/obj/transport_$ARCH.o" \
+    Sources/App/*.swift "$OUT/obj/transport_$ARCH.o" "$OUT/obj/accel_$ARCH.o" \
     -framework IOKit -framework CoreFoundation -framework SwiftUI -framework AppKit \
     -o "$OUT/obj/NagaControl_$ARCH"
 done

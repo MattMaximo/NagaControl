@@ -49,6 +49,8 @@ final class MouseController: ObservableObject {
     @Published var freeSpin = false
     @Published var scrollAccel = false
     @Published var smartReel = false
+    /// macOS pointer acceleration for the selected mouse (a per-mouse OS setting, not stored on the mouse).
+    @Published var pointerAccel = true
 
     @Published var status = "Looking for your mouse…"
     @Published var statusIsError = false
@@ -100,6 +102,7 @@ final class MouseController: ObservableObject {
             found = [FoundDevice(pid: UInt16(ProcessInfo.processInfo.environment["NAGA_DEMO"] ?? "", radix: 16) ?? 0x003E, location: 0, product: "Demo")]   // UI preview only
         }
         devices = found
+        applySavedPointerAccel(found)
         log("Scan: " + (found.isEmpty ? "no Razer USB devices" :
             found.map { String(format: "%@ [1532:%04X]", $0.product, $0.pid) }.joined(separator: ", ")))
         if let cur = selected, found.contains(cur) {
@@ -123,6 +126,7 @@ final class MouseController: ObservableObject {
             freeSpin = false; scrollAccel = false; smartReel = false
             selected = d
         }
+        if let d { pointerAccel = Self.savedPointerAccel(d.pid) ?? (rz_pointer_acceleration_enabled(d.pid) != 0) }
         if d != nil { readAll() } else {
             setStatus("No Razer mouse found. Plug in the cable or the dock.", error: true)
         }
@@ -362,6 +366,37 @@ final class MouseController: ObservableObject {
     func applySmartReel(_ on: Bool) {
         smartReel = on
         run([Cmd.setSmartReel(on)], label: "Smart Reel \(on ? "on" : "off")") { _, _ in }
+    }
+
+    // MARK: pointer acceleration (per mouse, macOS side)
+
+    private static func accelKey(_ pid: UInt16) -> String { String(format: "pointerAccel.%04X", pid) }
+    static func savedPointerAccel(_ pid: UInt16) -> Bool? {
+        UserDefaults.standard.object(forKey: accelKey(pid)) as? Bool
+    }
+
+    func applyPointerAccel(_ on: Bool) {
+        guard let d = selected else { return }
+        pointerAccel = on
+        UserDefaults.standard.set(on, forKey: Self.accelKey(d.pid))
+        let r = rz_set_pointer_acceleration(d.pid, on ? 1 : 0)
+        log("Pointer acceleration \(on ? "on" : "off") for 1532:\(String(format: "%04X", d.pid)) → \(r)")
+        if r > 0 { setStatus("Pointer acceleration \(on ? "on" : "off")", error: false) }
+        else { setStatus("Couldn't change pointer acceleration (\(r))", error: true) }
+    }
+
+    /// macOS resets the setting when a mouse reconnects, so re-apply saved choices for every mouse
+    /// on each scan where the device list changed.
+    private var accelAppliedFor: Set<String> = []
+    private func applySavedPointerAccel(_ found: [FoundDevice]) {
+        let ids = Set(found.map(\.id))
+        accelAppliedFor.formIntersection(ids)
+        for d in found where !accelAppliedFor.contains(d.id) {
+            guard let on = Self.savedPointerAccel(d.pid) else { continue }
+            let r = rz_set_pointer_acceleration(d.pid, on ? 1 : 0)
+            if r > 0 { accelAppliedFor.insert(d.id) }
+            log("Re-applied pointer acceleration \(on ? "on" : "off") for 1532:\(String(format: "%04X", d.pid)) → \(r)")
+        }
     }
 
     private func rgb(_ c: Color) -> (UInt8, UInt8, UInt8) {

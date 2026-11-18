@@ -25,4 +25,12 @@ int rz_list_devices(rz_device_info *out, int max);
 int rz_transfer(uint32_t locationID, uint16_t productID, uint16_t interfaceIndex,
                 const uint8_t *request, uint8_t *response, uint32_t wait_us, int *path_used);
 
+/// Turns macOS pointer acceleration on/off for every pointer service of this Razer mouse
+/// (pointer_accel.c). Returns services verified (>0), 0 if the mouse has no pointer service,
+/// negative on failure.
+int rz_set_pointer_acceleration(uint16_t productID, int enabled);
+
+/// 1 = acceleration on, 0 = off (linear), -1 = unknown / mouse not found.
+int rz_pointer_acceleration_enabled(uint16_t productID);
+
 #endif

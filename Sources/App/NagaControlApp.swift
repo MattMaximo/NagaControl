@@ -148,6 +148,8 @@ struct ContentView: View {
                     .buttonStyle(Chip(active: mouse.isCurrentDPI(p)))
                 }
             }
+            SwitchRow(title: "Pointer acceleration", isOn: Binding(get: { mouse.pointerAccel }, set: { mouse.applyPointerAccel($0) }))
+                .help("macOS acceleration for this mouse only. Off = 1:1 movement, crisper aim.")
             Row("Polling rate") {
                 Picker("", selection: Binding(get: { mouse.pollRate }, set: { mouse.applyPoll($0) })) {
                     Text("125").tag(125); Text("500").tag(500); Text("1000 Hz").tag(1000)
