@@ -2,7 +2,7 @@
 
 Small native macOS app that replaces Razer Synapse, OpenSnek and LinearMouse for Matt's mice:
 the original Naga Epic (1532:001F) and the Basilisk V3 (1532:0099).
-Also has entries for the Naga Epic Chroma (003E wired, 003F dock), Naga 2014 (0040) and Basilisk V3 35K (00CB).
+Also has entries for the Naga Epic Chroma (003E wired, 003F dock) and Basilisk V3 35K (00CB).
 
 - DPI (presets, separate X/Y), polling rate, lighting + brightness, sleep timer, battery.
 - Basilisk V3: free-spin / Smart Reel / scroll acceleration.

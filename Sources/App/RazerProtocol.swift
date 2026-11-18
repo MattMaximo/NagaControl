@@ -123,7 +123,6 @@ struct MouseModel {
         case 0x003E: return MouseModel(name: "Naga Epic Chroma (wired)", maxDPI: 8200, byteDPI: false, wireless: true, zones: [.scrollWheel, .sidePanel], rgb: true)
         case 0x003F: return MouseModel(name: "Naga Epic Chroma (wireless dock)", maxDPI: 8200, byteDPI: false, wireless: true, zones: [.scrollWheel, .sidePanel], rgb: true)
         case 0x001F: return MouseModel(name: "Naga Epic", maxDPI: 5600, byteDPI: true, wireless: true, zones: [.scrollWheel], rgb: true)
-        case 0x0040: return MouseModel(name: "Naga 2014", maxDPI: 8200, byteDPI: false, wireless: false, zones: [.scrollWheel, .sidePanel], rgb: false)
         case 0x0099: return MouseModel(name: "Basilisk V3", maxDPI: 26000, byteDPI: false, wireless: false,
                                        zones: [.all, .logo, .scrollWheel], rgb: true, family: .extended,
                                        transactionID: 0x1F, usbIndex: 3, scrollControls: true, defaultEffect: .spectrum)
