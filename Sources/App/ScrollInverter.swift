@@ -25,6 +25,18 @@ final class ScrollInverter: ObservableObject {
         reverseVertical = d.bool(forKey: "reverseVertical")
         reverseHorizontal = d.bool(forKey: "reverseHorizontal")
         syncTap()
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.refreshFromSystem() }
+        }
+    }
+
+    /// The login item and the Accessibility permission can both be changed in System Settings
+    /// behind the app's back; pick the changes up when the app comes to the front.
+    private func refreshFromSystem() {
+        let enabled = SMAppService.mainApp.status == .enabled
+        if enabled != openAtLogin { openAtLogin = enabled }
+        syncTap()
     }
 
     private func save() {
