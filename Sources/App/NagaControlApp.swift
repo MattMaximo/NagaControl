@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-let razerGreen = Color(red: 0.27, green: 0.84, blue: 0.17)
+let razerGreen = MouseController.defaultColor
 
 @main
 struct NagaControlApp: App {
@@ -207,7 +207,7 @@ struct ContentView: View {
                         Text(z.label).font(.subheadline.weight(.medium))
                         Spacer()
                         if m.rgb && [LightEffect.staticColor, .breathing].contains(mouse.effects[z] ?? .staticColor) {
-                            ColorPicker("", selection: Binding(get: { mouse.colors[z] ?? razerGreen },
+                            ColorPicker("", selection: Binding(get: { mouse.colors[z] ?? MouseController.defaultColor },
                                                                set: { mouse.colors[z] = $0; mouse.applyLightingSoon(z) }),
                                         supportsOpacity: false).labelsHidden()
                         }
@@ -239,7 +239,8 @@ struct ContentView: View {
                 Text("Sleep after idle")
                 Spacer()
                 Picker("", selection: Binding(get: { mouse.idleMinutes }, set: { mouse.applyIdle($0) })) {
-                    ForEach([1, 2, 3, 5, 10, 15], id: \.self) { Text("\($0) min").tag($0) }
+                    // Include the mouse's own value when it isn't one of ours, or the picker shows blank.
+                    ForEach((MouseController.idleChoices + [mouse.idleMinutes]).uniquedSorted, id: \.self) { Text("\($0) min").tag($0) }
                 }.labelsHidden().frame(width: 110)
             }
             if mouse.battery == nil {
@@ -335,4 +336,8 @@ struct Chip: ButtonStyle {
             .foregroundStyle(active ? .black : .primary)
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
+}
+
+private extension Array where Element == Int {
+    var uniquedSorted: [Int] { Array(Set(self)).sorted() }
 }

@@ -22,7 +22,7 @@ enum TransportError: Error, LocalizedError {
             case .notSupported: return "Not supported by this mouse"
             default: return "Unexpected status \(s)"
             }
-        case .mismatch: return "Garbled reply"
+        case .mismatch: return "No usable reply from the mouse"
         }
     }
 }
@@ -53,6 +53,10 @@ final class MouseController: ObservableObject {
     @Published var status = "Looking for your mouse…"
     @Published var statusIsError = false
     @Published var log: [String] = []
+
+    /// Colour shown and sent for a zone until the mouse (or the user) says otherwise. Razer green.
+    nonisolated static let defaultColor = Color(red: 0.27, green: 0.84, blue: 0.17)
+    static let idleChoices = [1, 2, 3, 5, 10, 15]
 
     private let queue = DispatchQueue(label: "naga.usb")
     private var pollTimer: Timer?
@@ -219,18 +223,18 @@ final class MouseController: ObservableObject {
                 for z in m.zones {
                     if let b = next() { self.brightness[z] = Double(b.arg(2)) / 255 * 100 }
                     if self.effects[z] == nil { self.effects[z] = m.defaultEffect }
-                    if self.colors[z] == nil { self.colors[z] = Color(red: 0.27, green: 0.84, blue: 0.17) }
+                    if self.colors[z] == nil { self.colors[z] = Self.defaultColor }
                 }
             } else {
-            for z in m.zones {
-                if let b = next() { self.brightness[z] = Double(b.arg(2)) / 255 * 100 }
-                let st = next(), ef = next(), c = next()
-                if let st, st.arg(2) == 0 { self.effects[z] = .off }
-                else if let ef { self.effects[z] = [0: .staticColor, 2: .breathing, 4: .spectrum][Int(ef.arg(2))] ?? .staticColor }
-                else if self.effects[z] == nil { self.effects[z] = .staticColor }
-                if let c { self.colors[z] = Color(red: Double(c.arg(2)) / 255, green: Double(c.arg(3)) / 255, blue: Double(c.arg(4)) / 255) }
-                else if self.colors[z] == nil { self.colors[z] = Color(red: 0.27, green: 0.84, blue: 0.17) }
-            }
+                for z in m.zones {
+                    if let b = next() { self.brightness[z] = Double(b.arg(2)) / 255 * 100 }
+                    let st = next(), ef = next(), c = next()
+                    if let st, st.arg(2) == 0 { self.effects[z] = .off }
+                    else if let ef { self.effects[z] = [0: .staticColor, 2: .breathing, 4: .spectrum][Int(ef.arg(2))] ?? .staticColor }
+                    else if self.effects[z] == nil { self.effects[z] = .staticColor }
+                    if let c { self.colors[z] = Color(red: Double(c.arg(2)) / 255, green: Double(c.arg(3)) / 255, blue: Double(c.arg(4)) / 255) }
+                    else if self.colors[z] == nil { self.colors[z] = Self.defaultColor }
+                }
             }
             if m.scrollControls {
                 if let r = next() { self.freeSpin = r.arg(1) == 1 }
@@ -311,7 +315,7 @@ final class MouseController: ObservableObject {
         lightWork[z]?.cancel()
         guard let m = selected?.model else { return }
         let effect = effects[z] ?? .staticColor
-        let (r, g, b) = rgb(colors[z] ?? .green)
+        let (r, g, b) = rgb(colors[z] ?? Self.defaultColor)
         var reqs: [RazerReport] = []
         if m.family == .extended {
             switch effect {
@@ -370,21 +374,31 @@ final class MouseController: ObservableObject {
 
     private func setStatus(_ s: String, error: Bool) { status = s; statusIsError = error }
 
-    func log(_ s: String) {
-        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
-        let line = "\(f.string(from: Date())) \(s)"
+    private static let logTime: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
+    }()
+
+    private func log(_ s: String) {
+        let line = "\(Self.logTime.string(from: Date())) \(s)"
         log.append(line)
         if log.count > 300 { log.removeFirst(log.count - 300) }
         Self.appendLogFile(line)
     }
 
-    static let logURL: URL = {
-        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("NagaControl.log")
+    /// ~/Library/Logs/NagaControl.log. Started afresh at launch once it passes 1 MB, so a mouse
+    /// that sleeps on its dock for weeks (one failed battery read every 30 s) can't fill the disk.
+    private static let logURL: URL = {
+        let fm = FileManager.default
+        let dir = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs")
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("NagaControl.log")
+        if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 1_000_000 {
+            try? fm.removeItem(at: url)
+        }
+        return url
     }()
 
-    static func appendLogFile(_ line: String) {
+    private static func appendLogFile(_ line: String) {
         let data = Data((line + "\n").utf8)
         if let h = try? FileHandle(forWritingTo: logURL) { h.seekToEndOfFile(); h.write(data); try? h.close() }
         else { try? data.write(to: logURL) }
