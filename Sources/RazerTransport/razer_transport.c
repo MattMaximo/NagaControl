@@ -102,8 +102,9 @@ static int usb_transfer(uint32_t locationID, uint16_t productID, uint16_t idx,
     IOObjectRelease(found);
     if (kr != KERN_SUCCESS || !plug) return kr ? kr : -3;
 
-    IOUSBDeviceInterface **dev = NULL;
-    HRESULT hr = (*plug)->QueryInterface(plug, CFUUIDGetUUIDBytes(kIOUSBDeviceInterfaceID), (LPVOID *)&dev);
+    // 182+ interface for DeviceRequestTO, so a mouse that stops answering can't block the queue.
+    IOUSBDeviceInterface182 **dev = NULL;
+    HRESULT hr = (*plug)->QueryInterface(plug, CFUUIDGetUUIDBytes(kIOUSBDeviceInterfaceID182), (LPVOID *)&dev);
     (*plug)->Release(plug);
     if (hr || !dev) return -4;
 
@@ -112,28 +113,30 @@ static int usb_transfer(uint32_t locationID, uint16_t productID, uint16_t idx,
 
     uint8_t out[RZ_REPORT_LEN];
     memcpy(out, req, RZ_REPORT_LEN);
-    IOUSBDevRequest r;
+    IOUSBDevRequestTO r;
     memset(&r, 0, sizeof(r));
+    r.noDataTimeout = 1000; r.completionTimeout = 1000;   // ms
     r.bmRequestType = USBmakebmRequestType(kUSBOut, kUSBClass, kUSBInterface); // 0x21
     r.bRequest = 0x09;   // HID SET_REPORT
     r.wValue = 0x0300;   // feature report, id 0
     r.wIndex = idx;
     r.wLength = RZ_REPORT_LEN;
     r.pData = out;
-    IOReturn ret = (*dev)->DeviceRequest(dev, &r);
+    IOReturn ret = (*dev)->DeviceRequestTO(dev, &r);
 
     if (ret == kIOReturnSuccess) {
         usleep(wait_us);
         uint8_t in[RZ_REPORT_LEN];
         memset(in, 0, sizeof(in));
         memset(&r, 0, sizeof(r));
+        r.noDataTimeout = 1000; r.completionTimeout = 1000;
         r.bmRequestType = USBmakebmRequestType(kUSBIn, kUSBClass, kUSBInterface); // 0xA1
         r.bRequest = 0x01;   // HID GET_REPORT
         r.wValue = 0x0300;
         r.wIndex = idx;
         r.wLength = RZ_REPORT_LEN;
         r.pData = in;
-        ret = (*dev)->DeviceRequest(dev, &r);
+        ret = (*dev)->DeviceRequestTO(dev, &r);
         if (ret == kIOReturnSuccess) memcpy(resp, in, RZ_REPORT_LEN);
     }
 

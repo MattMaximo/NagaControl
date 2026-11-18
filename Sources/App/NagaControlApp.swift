@@ -9,41 +9,26 @@ struct NagaControlApp: App {
     @StateObject private var scroll = ScrollInverter.shared
 
     var body: some Scene {
-        WindowGroup("Naga Control") {
-            ContentView().environmentObject(mouse).environmentObject(scroll)
-                .frame(minWidth: 460, idealWidth: 480, minHeight: 600)
-                .preferredColorScheme(.dark)
-        }
-        .windowResizability(.contentSize)
-
+        // Menu-bar-only app (LSUIElement): clicking the icon opens the full control panel.
         MenuBarExtra {
-            MenuDPI().environmentObject(mouse).environmentObject(scroll)
+            ContentView().environmentObject(mouse).environmentObject(scroll)
+                .frame(width: 460, height: 640)
+                .preferredColorScheme(.dark)
         } label: {
-            Image(systemName: "computermouse.fill")
+            MenuBarLabel()
         }
+        .menuBarExtraStyle(.window)
     }
 }
 
-struct MenuDPI: View {
-    @EnvironmentObject var mouse: MouseController
-    @EnvironmentObject var scroll: ScrollInverter
+/// Template glyph from Resources/MenuBarIcon.png when bundled, else an SF Symbol.
+struct MenuBarLabel: View {
     var body: some View {
-        if let d = mouse.selected {
-            Text("\(d.model.name) — \(mouse.dpiX) DPI")
-            if let b = mouse.battery { Text("Battery \(b)%\(mouse.charging ? " (charging)" : "")") }
-            Divider()
-            ForEach(presets(max: d.model.maxDPI), id: \.self) { p in
-                Button("\(p) DPI\(mouse.isCurrentDPI(p) ? "  ✓" : "")") {
-                    mouse.dpiX = p; mouse.dpiY = p; mouse.linkXY = true; mouse.applyDPI(debounce: false)
-                }
-            }
+        if let img = NSImage(named: "MenuBarIcon") {
+            Image(nsImage: { img.isTemplate = true; img.size = NSSize(width: 18, height: 18); return img }())
         } else {
-            Text("No Razer mouse found")
+            Image(systemName: "computermouse.fill")
         }
-        Divider()
-        Toggle("Reverse mouse wheel", isOn: $scroll.reverseVertical)
-        Button("Rescan") { mouse.rescan() }
-        Button("Quit") { NSApp.terminate(nil) }
     }
 }
 
@@ -281,6 +266,7 @@ struct ContentView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(mouse.diagnostics(), forType: .string)
                 }.buttonStyle(.borderless).font(.caption)
+                Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.borderless).font(.caption)
             }
             if showLog {
                 ScrollView {
