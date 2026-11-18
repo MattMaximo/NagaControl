@@ -3,6 +3,17 @@ import AppKit
 
 let razerGreen = MouseController.defaultColor
 
+/// Light theme: white cards on a soft grey page, near-black text, Razer green for active state.
+enum Theme {
+    static let page = Color(red: 0.955, green: 0.957, blue: 0.962)
+    static let card = Color.white
+    static let cardBorder = Color.black.opacity(0.08)
+    static let ink = Color(red: 0.07, green: 0.07, blue: 0.08)        // headings, big numbers
+    static let inkSoft = Color(red: 0.33, green: 0.34, blue: 0.36)    // section titles
+    static let chipOff = Color(red: 0.92, green: 0.92, blue: 0.93)
+    static let greenText = Color(red: 0.13, green: 0.55, blue: 0.08)  // green that's readable as text on white
+}
+
 @main
 struct NagaControlApp: App {
     @StateObject private var mouse = MouseController()
@@ -13,7 +24,7 @@ struct NagaControlApp: App {
         MenuBarExtra {
             ContentView().environmentObject(mouse).environmentObject(scroll)
                 .frame(width: 460, height: 640)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(.light)
         } label: {
             MenuBarLabel()
         }
@@ -44,7 +55,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(razerGreen.opacity(0.4))
+            Divider()
             if let dev = mouse.selected {
                 ScrollView {
                     VStack(spacing: 14) {
@@ -63,14 +74,20 @@ struct ContentView: View {
             Divider()
             footer
         }
-        .background(Color(white: 0.08))
+        .background(Theme.page)
         .tint(razerGreen)
     }
 
     // MARK: header
     var header: some View {
         HStack(spacing: 12) {
-            Image(systemName: "computermouse.fill").font(.system(size: 26)).foregroundStyle(razerGreen)
+            Group {
+                if let icon = NSImage(named: "AppIcon") {
+                    Image(nsImage: icon).resizable().frame(width: 40, height: 40)
+                } else {
+                    Image(systemName: "computermouse.fill").font(.system(size: 26)).foregroundStyle(razerGreen)
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(mouse.selected?.model.name ?? "No mouse").font(.headline)
                 HStack(spacing: 8) {
@@ -96,6 +113,7 @@ struct ContentView: View {
                 .buttonStyle(.borderless).help("Rescan / re-read the mouse")
         }
         .padding(14)
+        .background(Color.white)
     }
 
     func batteryIcon(_ b: Int) -> String {
@@ -107,7 +125,7 @@ struct ContentView: View {
         Card(title: "Sensitivity", icon: "scope") {
             HStack(alignment: .firstTextBaseline) {
                 Text("\(mouse.dpiX)").font(.system(size: 44, weight: .bold, design: .rounded)).monospacedDigit()
-                    .foregroundStyle(razerGreen)
+                    .foregroundStyle(Theme.ink)
                 Text(mouse.linkXY ? "DPI" : "DPI X").foregroundStyle(.secondary)
                 Spacer()
                 Toggle("Separate X / Y", isOn: Binding(get: { !mouse.linkXY }, set: { mouse.setLinkXY(!$0) }))
@@ -261,12 +279,12 @@ struct ContentView: View {
                 Circle().fill(mouse.statusIsError ? Color.orange : razerGreen).frame(width: 7, height: 7)
                 Text(mouse.status).font(.caption).lineLimit(2)
                 Spacer()
-                Button(showLog ? "Hide log" : "Log") { showLog.toggle() }.buttonStyle(.borderless).font(.caption)
+                Button(showLog ? "Hide log" : "Log") { showLog.toggle() }.buttonStyle(.borderless).font(.caption).foregroundStyle(Theme.inkSoft)
                 Button("Copy diagnostics") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(mouse.diagnostics(), forType: .string)
-                }.buttonStyle(.borderless).font(.caption)
-                Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.borderless).font(.caption)
+                }.buttonStyle(.borderless).font(.caption).foregroundStyle(Theme.inkSoft)
+                Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.borderless).font(.caption).foregroundStyle(Theme.inkSoft)
             }
             if showLog {
                 ScrollView {
@@ -277,6 +295,7 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(Color.white)
     }
 }
 
@@ -285,14 +304,18 @@ struct Card<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: icon).font(.caption.weight(.semibold)).textCase(.uppercase)
-                .foregroundStyle(razerGreen)
+            HStack(spacing: 6) {
+                Image(systemName: icon).foregroundStyle(razerGreen)
+                Text(title).foregroundStyle(Theme.inkSoft)
+            }
+            .font(.caption.weight(.semibold)).textCase(.uppercase)
             content
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.13)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card)
+            .shadow(color: .black.opacity(0.05), radius: 3, y: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.cardBorder))
     }
 }
 
@@ -316,10 +339,11 @@ struct SwitchRow: View {
 struct Chip: ButtonStyle {
     let active: Bool
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.caption.monospacedDigit())
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(Capsule().fill(active ? razerGreen : Color(white: 0.2)))
-            .foregroundStyle(active ? .black : .primary)
+        configuration.label.font(.caption.weight(active ? .semibold : .regular).monospacedDigit())
+            .lineLimit(1).fixedSize()
+            .padding(.horizontal, 7).padding(.vertical, 4)
+            .background(Capsule().fill(active ? razerGreen : Theme.chipOff))
+            .foregroundStyle(Theme.ink)
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
 }
