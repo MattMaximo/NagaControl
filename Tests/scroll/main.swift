@@ -1,3 +1,5 @@
+// LIVE TOOL: posts synthetic scroll events and briefly changes the reverse-scroll setting.
+// Needs Accessibility. Never run while Matt is using the Mac.
 import Foundation
 import AppKit
 nonisolated(unsafe) var seen: [(Int64, Int64)] = []

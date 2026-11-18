@@ -1,3 +1,5 @@
+// LIVE TOOL: talks to the real mouse. Sets DPI 800, 1800, then the original value, and sets the
+// scroll-wheel light to Spectrum (not restored). Never run while Matt is using the mice.
 import Foundation
 import SwiftUI
 @MainActor func go() {

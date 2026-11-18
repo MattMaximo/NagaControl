@@ -1,3 +1,5 @@
+// LIVE TOOL, one-off: writes byte-DPI 2409 to the FIRST Razer device found, then reads it back.
+// Only valid for the original Naga Epic (1532:001F). Never run while Matt is using the mice.
 import Foundation
 var buf = [rz_device_info](repeating: rz_device_info(), count: 16)
 _ = rz_list_devices(&buf, 16); let d = buf[0]

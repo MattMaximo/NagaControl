@@ -1,3 +1,5 @@
+// UI tool: renders the window (Basilisk V3 layout) to the PNG path given as the first argument.
+// Creates a MouseController, so it also scans USB and reads the mouse once.
 import SwiftUI
 import AppKit
 MainActor.assumeIsolated {
