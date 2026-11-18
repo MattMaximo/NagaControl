@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 V=${1:?version}; NOTES=${2:-"Naga Control $V"}
 [[ -z "$(git status --porcelain -- Sources Resources build.sh)" ]] || { echo "commit your changes first"; exit 1; }
 echo "$V" > VERSION
-git add VERSION && git commit -qm "v$V" && git tag -f "v$V"
+git add VERSION; git commit -qm "v$V" || true; git tag -f "v$V"
 ./ship.sh
 rm -f build/NagaControl.zip
 ditto -c -k --sequesterRsrc --keepParent "build/Naga Control.app" build/NagaControl.zip
