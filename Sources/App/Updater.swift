@@ -16,7 +16,9 @@ final class Updater: ObservableObject {
     nonisolated static let requirement = "anchor apple generic and certificate leaf[subject.OU] = \"8Z64Q39H79\" and identifier \"com.mattmaximo.nagacontrol\""
 
     enum State: Equatable { case idle, checking, upToDate, available(String), installing, failed(String) }
-    @Published private(set) var state: State = .idle
+    @Published private(set) var state: State = .idle {
+        didSet { if state != oldValue { MouseController.appendLogFile("Updater: \(state)") } }
+    }
     private var downloadURL: URL?
     private var timer: Timer?
 

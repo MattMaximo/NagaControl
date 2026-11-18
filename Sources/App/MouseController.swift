@@ -497,7 +497,7 @@ final class MouseController: ObservableObject {
         return url
     }()
 
-    private static func appendLogFile(_ line: String) {
+    static func appendLogFile(_ line: String) {
         let data = Data((line + "\n").utf8)
         if let h = try? FileHandle(forWritingTo: logURL) { h.seekToEndOfFile(); h.write(data); try? h.close() }
         else { try? data.write(to: logURL) }
